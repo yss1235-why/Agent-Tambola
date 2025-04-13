@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { ref, update, onValue } from 'firebase/database';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@contexts';
-import { database } from '@lib/firebase';
+import { useAuth } from '../../../../contexts/AuthContext';
+import { database } from '../../../../lib/firebase';
 import { LoadingSpinner, Toast } from '@components';
 import TicketGrid from './components/TicketGrid';
 import BookingForm from './components/BookingForm';
@@ -167,11 +167,26 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
     }
 
     try {
+      // Prepare updates for the game state - FULLY DEFINED TO AVOID PARTIAL UPDATES
       const updates = {
-        'gameState/phase': GAME_PHASES.PLAYING,
-        'gameState/status': GAME_STATUSES.ACTIVE,
-        'gameState/isAutoCalling': false,
-        'gameState/soundEnabled': true,
+        'gameState': {
+          phase: GAME_PHASES.PLAYING,    // Set to playing phase (3)
+          status: GAME_STATUSES.PAUSED,  // Start paused so user can manually start
+          isAutoCalling: false,
+          soundEnabled: true,
+          winners: gameData.gameState?.winners || {
+            quickFive: [],
+            topLine: [],
+            middleLine: [],
+            bottomLine: [],
+            corners: [],
+            starCorners: [],
+            halfSheet: [],
+            fullSheet: [],
+            fullHouse: [],
+            secondFullHouse: []
+          }
+        },
         'numberSystem': {
           callDelay: gameData.settings.callDelay || 5,
           currentNumber: null,
@@ -180,7 +195,12 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
         }
       };
 
+      console.log("Starting game with updates:", updates);
+
+      // Update Firebase
       await update(ref(database, `hosts/${currentUser.uid}/currentGame`), updates);
+      
+      // Navigate to playing phase
       navigate('/playing-phase');
     } catch (err) {
       console.error('Error starting game:', err);
