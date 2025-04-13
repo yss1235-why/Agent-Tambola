@@ -73,6 +73,7 @@ export function useGameController({
         
         console.log('Game state updated:', 
           gameData.gameState.status, 
+          'Phase:', gameData.gameState.phase,
           'Numbers called:', gameData.numberSystem?.calledNumbers?.length || 0);
         
         setGameState(gameData);
@@ -115,7 +116,7 @@ export function useGameController({
       const activePrizes = game.settings?.prizes || {};
       
       // Use PrizeValidationService to validate all prizes
-      const prizeValidationService = PrizeValidationService.getInstance();
+      const prizeValidationService = new PrizeValidationService();
       prizeValidationService.initialize(hostId);
       
       const validationResults = await prizeValidationService.validateAllPrizes(
@@ -164,6 +165,8 @@ export function useGameController({
       const game = snapshot.val() as Game.CurrentGame;
       const timestamp = Date.now();
       
+      console.log('Completing game...');
+      
       // Update game state
       await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
         phase: 4, // Completed phase
@@ -178,6 +181,7 @@ export function useGameController({
         endReason: 'Game completed'
       });
       
+      console.log('Game completed successfully');
       onGameComplete?.();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to complete game';
@@ -235,6 +239,7 @@ export function useGameController({
       
       // Check if all numbers have been called
       if (calledNumsArray.length >= 90) {
+        console.log('All 90 numbers have been called, completing game');
         await completeGame();
         return;
       }
@@ -244,9 +249,12 @@ export function useGameController({
         .filter(n => !calledNumsArray.includes(n));
       
       if (availableNumbers.length === 0) {
+        console.log('No available numbers left, completing game');
         await completeGame();
         return;
       }
+      
+      console.log(`Available numbers: ${availableNumbers.length}, Called numbers: ${calledNumsArray.length}`);
       
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
       const nextNumber = availableNumbers[randomIndex];
@@ -290,7 +298,7 @@ export function useGameController({
         scheduleNextNumber();
       }
     }
-  }, [hostId, allPrizesWon, onNumberCalled, onError, completeGame, validatePrizes]);
+  }, [hostId, allPrizesWon, onNumberCalled, onError, completeGame, validatePrizes, audioManager]);
   
   // Sequential scheduling with proper delay
   const scheduleNextNumber = useCallback(() => {
