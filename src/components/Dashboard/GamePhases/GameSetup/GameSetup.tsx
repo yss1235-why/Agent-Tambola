@@ -113,12 +113,19 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     setIsSubmitting(true);
     
     try {
-      // Update settings in Firebase
-      await update(ref(database, `hosts/${currentUser.uid}/currentGame`), {
-        settings
-      });
+      // Create update object for multiple paths
+      const updates: Record<string, any> = {};
       
-      setToastMessage('Settings saved successfully');
+      // Update settings in current game
+      updates[`hosts/${currentUser.uid}/currentGame/settings`] = settings;
+      
+      // Also save as default settings for future games
+      updates[`hosts/${currentUser.uid}/defaultSettings`] = settings;
+      
+      // Apply all updates atomically
+      await update(ref(database), updates);
+      
+      setToastMessage('Settings saved successfully and set as defaults');
       setToastType('success');
       setShowToast(true);
       setHasMadeChanges(false);
@@ -147,6 +154,9 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     
     try {
       console.log('Starting booking phase. Loading ticket data...');
+      
+      // Save current settings as defaults for future games
+      await update(ref(database, `hosts/${currentUser.uid}/defaultSettings`), settings);
       
       // Load and process ticket data
       const ticketData = await loadTicketData(
