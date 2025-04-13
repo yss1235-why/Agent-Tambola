@@ -1,7 +1,7 @@
 // src/components/Layouts/MainLayout.tsx
 import { useState } from 'react';
 import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { Menu, X, Home, BarChart2, Clock, User, Settings, LogOut } from 'lucide-react';
+import { Menu, X, Home, Clock, User, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Toast } from '../../components/Common/Toast';
 import appConfig from '../../config/appConfig';
@@ -76,12 +76,6 @@ const MainLayout = () => {
                 onClick={() => setIsMenuOpen(false)}
               />
               <NavItem
-                to="/analytics"
-                icon={<BarChart2 size={20} />}
-                label="Analytics"
-                onClick={() => setIsMenuOpen(false)}
-              />
-              <NavItem
                 to="/history"
                 icon={<Clock size={20} />}
                 label="History"
@@ -116,42 +110,9 @@ const MainLayout = () => {
         </div>
       )}
 
-      {/* Desktop Sidebar and Main Content */}
+      {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Desktop Sidebar */}
-        <aside className="hidden md:block w-64 bg-white border-r">
-          <nav className="mt-5 px-2">
-            <ul className="space-y-2">
-              <NavItem
-                to="/dashboard"
-                icon={<Home size={20} />}
-                label="Dashboard"
-              />
-              <NavItem
-                to="/analytics"
-                icon={<BarChart2 size={20} />}
-                label="Analytics"
-              />
-              <NavItem
-                to="/history"
-                icon={<Clock size={20} />}
-                label="History"
-              />
-              <NavItem
-                to="/profile"
-                icon={<User size={20} />}
-                label="Profile"
-              />
-              <NavItem
-                to="/settings"
-                icon={<Settings size={20} />}
-                label="Settings"
-              />
-            </ul>
-          </nav>
-        </aside>
-
-        {/* Main content */}
+        {/* Main content - Sidebar removed */}
         <main className="flex-1 overflow-auto">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <Outlet />
