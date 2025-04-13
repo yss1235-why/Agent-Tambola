@@ -1,7 +1,7 @@
 // src/components/Dashboard/Dashboard.tsx
 
 import { useState, useEffect } from 'react';
-import { ref, onValue, set } from 'firebase/database';
+import { ref, onValue, set, get } from 'firebase/database';
 import { database } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import DashboardHeader from './DashboardHeader';
@@ -104,10 +104,22 @@ function Dashboard() {
     
     setIsInitializingGame(true);
     try {
+      // Try to load default settings
+      let gameSettings = DEFAULT_SETTINGS;
+      
+      const defaultSettingsRef = ref(database, `hosts/${currentUser.uid}/defaultSettings`);
+      const snapshot = await get(defaultSettingsRef);
+      
+      if (snapshot.exists()) {
+        // Use stored default settings
+        console.log('Using default settings from previous game');
+        gameSettings = snapshot.val();
+      }
+      
       const gameRef = ref(database, `hosts/${currentUser.uid}/currentGame`);
       
       const newGame = {
-        settings: DEFAULT_SETTINGS,
+        settings: gameSettings,
         gameState: DEFAULT_GAME_STATE,
         numberSystem: DEFAULT_NUMBER_SYSTEM,
         startTime: Date.now(),
