@@ -28,7 +28,6 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
     currentNumber,
     error: gameError,
     allPrizesWon,
-    gameCompleted,
     pauseGame,
     resumeGame,
     completeGame,
@@ -79,17 +78,9 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
     } else if (gameState) {
       setIsLoading(false);
       setIsGameComplete(gameState.gameState?.status === 'ended' || 
-                        gameState.gameState?.phase === 4 ||
-                        gameCompleted);
+                        gameState.gameState?.phase === 4);
     }
-  }, [currentUser, gameState, navigate, initialized, gameCompleted]);
-
-  // Keep track of game completion status
-  useEffect(() => {
-    if (gameCompleted) {
-      setIsGameComplete(true);
-    }
-  }, [gameCompleted]);
+  }, [currentUser, gameState, navigate, initialized]);
 
   // Keep track of all prizes won status
   useEffect(() => {
