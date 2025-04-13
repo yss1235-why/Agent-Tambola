@@ -10,6 +10,7 @@ import TicketSetSelector from './components/TicketSetSelector';
 import GameParameters from './components/GameParameters';
 import { Game, GAME_PHASES, GAME_STATUSES } from '../../../../types/game';
 import { AlertTriangle, CheckCircle, Save, ChevronRight, Phone } from 'lucide-react';
+import { loadTicketData, validateTicketData } from '../../../../utils/ticketLoader';
 
 interface GameSetupProps {
   currentGame: Game.CurrentGame;
@@ -145,28 +146,59 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     setIsSubmitting(true);
     
     try {
+      console.log('Starting booking phase. Loading ticket data...');
+      
+      // Load and process ticket data
+      const ticketData = await loadTicketData(
+        settings.selectedTicketSet,
+        settings.maxTickets
+      );
+      
+      // Validate the processed ticket data
+      if (!validateTicketData(ticketData)) {
+        throw new Error('Invalid ticket data structure. Please check the ticket data files.');
+      }
+      
+      console.log(`Ticket data loaded successfully. Creating ${settings.maxTickets} tickets...`);
+      
       // Initialize Firebase update object
       const updates: Record<string, any> = {};
       
       // Include settings
       updates['settings'] = settings;
       
-      // Explicitly create gameState object instead of using paths
-      // This ensures the entire object is updated atomically
+      // Create gameState object with fully initialized winners object
       updates['gameState'] = {
-        phase: GAME_PHASES.BOOKING, // Using proper enum value (2) instead of string
-        status: GAME_STATUSES.BOOKING // Using proper enum value from GAME_STATUSES
+        phase: GAME_PHASES.BOOKING,
+        status: GAME_STATUSES.BOOKING,
+        winners: {
+          quickFive: [],
+          topLine: [],
+          middleLine: [],
+          bottomLine: [],
+          corners: [],
+          starCorners: [],
+          halfSheet: [],
+          fullSheet: [],
+          fullHouse: [],
+          secondFullHouse: []
+        }
       };
       
-      // Initialize active tickets based on max tickets setting
+      // Initialize active tickets with the loaded number data
       const tickets: Record<string, Game.Ticket> = {};
       for (let i = 1; i <= settings.maxTickets; i++) {
-        tickets[i.toString()] = {
-          id: i.toString(),
+        const ticketId = i.toString();
+        
+        // Get the processed numbers array for this ticket
+        const ticketNumbers = ticketData[ticketId] || [[], [], []];
+        
+        tickets[ticketId] = {
+          id: ticketId,
           status: 'available',
           sheetNumber: settings.selectedTicketSet,
           position: Math.ceil(i / 6),
-          numbers: []
+          numbers: ticketNumbers
         };
       }
       
@@ -176,25 +208,37 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         bookings: {}
       };
       
-      // Add timestamp to track when the game entered booking phase
+      // Add timestamp and metrics
       updates['bookingMetrics'] = {
         startTime: Date.now(),
+        lastBookingTime: Date.now(),
         totalBookings: 0,
         totalPlayers: 0
       };
       
-      // Update the database with the complete object structure
+      // Initialize numberSystem
+      updates['numberSystem'] = {
+        callDelay: settings.callDelay || 5,
+        currentNumber: null,
+        calledNumbers: [],
+        queue: []
+      };
+      
+      console.log('Updating database with ticket data...');
+      
+      // Update the database
       await update(ref(database, `hosts/${currentUser.uid}/currentGame`), updates);
+      
+      console.log('Database updated successfully. Moving to booking phase.');
       
       setToastMessage('Moving to booking phase');
       setToastType('success');
       setShowToast(true);
       
-      // Navigate to dashboard to see the updated game state
       navigate('/dashboard');
     } catch (error) {
       console.error('Error starting booking phase:', error);
-      setToastMessage('Failed to start booking phase. Please try again.');
+      setToastMessage(`Failed to start booking phase: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setToastType('error');
       setShowToast(true);
     } finally {
