@@ -63,10 +63,10 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
       setLocalCallDelay(gameState.numberSystem?.callDelay || appConfig.gameDefaults.callDelay);
       setSoundEnabled(gameState.gameState?.soundEnabled || true);
       
-      // Initialize game in paused state if needed
-      if (appConfig.gameDefaults.startInPausedState && 
-          gameState.gameState?.status === 'active' && 
-          gameState.numberSystem?.calledNumbers?.length === 0) {
+      // Always initialize game in paused state when first entering the playing phase
+      if (gameState.gameState?.status !== 'paused' && 
+          (gameState.numberSystem?.calledNumbers?.length === 0 || 
+           appConfig.gameDefaults.startInPausedState)) {
         console.log('Initializing game in paused state');
         initializeGameInPausedState(currentUser.uid);
       }
@@ -100,17 +100,15 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
       const snapshot = await get(gameRef);
       
       if (snapshot.exists()) {
-        // Only update if the game has no called numbers
-        const game = snapshot.val() as Game.CurrentGame;
-        if ((game.numberSystem?.calledNumbers?.length || 0) === 0) {
-          await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
-            status: 'paused'
-          });
-          console.log('Game initialized in paused state');
-        }
+        // Update regardless of number count to ensure game starts paused
+        await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
+          status: 'paused'
+        });
+        console.log('Game initialized in paused state');
       }
     } catch (err) {
       console.error('Failed to initialize game in paused state:', err);
+      setError(handleApiError(err, 'Failed to initialize game state. Please try refreshing.'));
     }
   };
 
@@ -167,9 +165,38 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
         await resumeGame();
       }
     } catch (err) {
-      setError(handleApiError(err, 'Failed to change game status'));
+      // More robust error handling
+      console.error("Error changing game status:", err);
+      
+      // Try alternative approach if permission denied
+      if (err instanceof Error && err.message.includes("PERMISSION_DENIED")) {
+        try {
+          console.log("Trying alternative approach to update game status");
+          
+          // Direct database update as a fallback
+          if (currentUser?.uid) {
+            if (status === 'paused') {
+              await update(ref(database, `hosts/${currentUser.uid}/currentGame/gameState`), {
+                status: 'paused',
+                isAutoCalling: false
+              });
+            } else {
+              await update(ref(database, `hosts/${currentUser.uid}/currentGame/gameState`), {
+                status: 'active',
+                isAutoCalling: true
+              });
+            }
+            console.log("Status updated successfully with fallback method");
+          }
+        } catch (fallbackErr) {
+          console.error("Fallback also failed:", fallbackErr);
+          setError(handleApiError(err, 'Failed to change game status. Please check permissions.'));
+        }
+      } else {
+        setError(handleApiError(err, 'Failed to change game status'));
+      }
     }
-  }, [pauseGame, resumeGame, allPrizesWon]);
+  }, [pauseGame, resumeGame, allPrizesWon, currentUser]);
 
   const handleGameEnd = useCallback(async () => {
     try {
