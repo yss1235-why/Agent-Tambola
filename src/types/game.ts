@@ -92,7 +92,7 @@ export namespace Game {
   
   export interface GameState {
     phase: 1 | 2 | 3 | 4; // 1: Setup, 2: Booking, 3: Playing, 4: Completed
-    status: 'setup' | 'active' | 'paused' | 'ended';
+    status: 'setup' | 'active' | 'paused' | 'ended' | 'booking';
     isAutoCalling: boolean;
     soundEnabled: boolean;
     winners: Winners;
@@ -165,7 +165,8 @@ export const GAME_STATUSES = {
   SETUP: 'setup',
   ACTIVE: 'active',
   PAUSED: 'paused',
-  ENDED: 'ended'
+  ENDED: 'ended',
+  BOOKING: 'booking' // Added this status for the booking phase
 } as const;
 
 // Initial State Defaults
