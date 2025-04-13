@@ -185,7 +185,8 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
             fullSheet: [],
             fullHouse: [],
             secondFullHouse: []
-          }
+          },
+          allPrizesWon: false  // Ensure this is explicitly set to false
         },
         'numberSystem': {
           callDelay: gameData.settings.callDelay || 5,
