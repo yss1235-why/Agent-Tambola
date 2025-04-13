@@ -17,6 +17,13 @@ interface UseGameControllerProps {
   onError?: (error: string) => void;
 }
 
+// Define the interface for validation results
+interface ValidationResult {
+  isValid: boolean;
+  winners: string[];
+  error?: string;
+}
+
 export function useGameController({
   hostId,
   onNumberCalled,
@@ -116,7 +123,8 @@ export function useGameController({
       const activePrizes = game.settings?.prizes || {};
       
       // Use PrizeValidationService to validate all prizes
-      const prizeValidationService = new PrizeValidationService();
+      // Fix 1: Use getInstance() instead of direct instantiation
+      const prizeValidationService = PrizeValidationService.getInstance();
       prizeValidationService.initialize(hostId);
       
       const validationResults = await prizeValidationService.validateAllPrizes(
@@ -128,12 +136,16 @@ export function useGameController({
       );
       
       // Process validation results
+      // Fix 2: Properly type the validation results
       Object.entries(validationResults).forEach(([prizeType, result]) => {
-        if (result.isValid && result.winners.length > 0) {
+        // Fix 3: Type assertion and property access
+        const typedResult = result as ValidationResult;
+        
+        if (typedResult.isValid && typedResult.winners.length > 0) {
           const prizeTypeKey = prizeType as keyof Game.Winners;
           
           // Call the onPrizeWon callback if provided
-          onPrizeWon?.(prizeTypeKey, result.winners);
+          onPrizeWon?.(prizeTypeKey, typedResult.winners);
         }
       });
     } catch (err) {
