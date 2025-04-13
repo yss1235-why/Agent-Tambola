@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, ReactNo
 import { useGameController } from '../hooks/useGameController';
 import type { Game } from '../types/game';
 
+// Make sure to include gameCompleted in the context type
 type GameContextType = ReturnType<typeof useGameController> & {
   hostId: string | null;
 };
@@ -56,5 +57,5 @@ export function useGame() {
   if (context === undefined) {
     throw new Error('useGame must be used within a GameProvider');
   }
-  return context; 
+  return context;
 }
