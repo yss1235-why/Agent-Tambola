@@ -154,8 +154,8 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       // Explicitly create gameState object instead of using paths
       // This ensures the entire object is updated atomically
       updates['gameState'] = {
-        phase: 'BOOKING', // Use string literal instead of enum
-        status: 'BOOKING' // Use string literal instead of enum
+        phase: GAME_PHASES.BOOKING, // Using proper enum value (2) instead of string
+        status: GAME_STATUSES.BOOKING // Using proper enum value from GAME_STATUSES
       };
       
       // Initialize active tickets based on max tickets setting
@@ -164,9 +164,9 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         tickets[i.toString()] = {
           id: i.toString(),
           status: 'available',
-          sheetNumber: settings.selectedTicketSet, // Changed from 'set' to 'sheetNumber'
-          position: Math.ceil(i / 6), // Calculate position based on ticket number
-          numbers: [] // Initialize with empty array
+          sheetNumber: settings.selectedTicketSet,
+          position: Math.ceil(i / 6),
+          numbers: []
         };
       }
       
