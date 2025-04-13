@@ -164,7 +164,9 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         tickets[i.toString()] = {
           id: i.toString(),
           status: 'available',
-          set: settings.selectedTicketSet
+          sheetNumber: settings.selectedTicketSet, // Changed from 'set' to 'sheetNumber'
+          position: Math.ceil(i / 6), // Calculate position based on ticket number
+          numbers: [] // Initialize with empty array
         };
       }
       
