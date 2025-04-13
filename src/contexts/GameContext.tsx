@@ -56,5 +56,5 @@ export function useGame() {
   if (context === undefined) {
     throw new Error('useGame must be used within a GameProvider');
   }
-  return context;
+  return context; 
 }
