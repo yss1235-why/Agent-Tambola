@@ -34,7 +34,7 @@ export function useGameController({
 }: UseGameControllerProps) {
   // State management
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isPaused, setIsPaused] = useState(appConfig.gameDefaults.startInPausedState);
+  const [isPaused, setIsPaused] = useState(true); // Start in paused state by default
   const [queueNumbers, setQueueNumbers] = useState<number[]>([]);
   const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
   const [currentNumber, setCurrentNumber] = useState<number | null>(null);
@@ -86,8 +86,7 @@ export function useGameController({
         setGameState(gameData);
         
         // Update local pause state based on game state
-        const isPausedState = gameData.gameState?.status === 'paused' || 
-          (appConfig.gameDefaults.startInPausedState && !gameData.numberSystem?.calledNumbers?.length);
+        const isPausedState = gameData.gameState?.status === 'paused';
         
         setIsPaused(isPausedState);
         pausedRef.current = isPausedState;
@@ -123,7 +122,6 @@ export function useGameController({
       const activePrizes = game.settings?.prizes || {};
       
       // Use PrizeValidationService to validate all prizes
-      // Fix 1: Use getInstance() instead of direct instantiation
       const prizeValidationService = PrizeValidationService.getInstance();
       prizeValidationService.initialize(hostId);
       
@@ -136,9 +134,7 @@ export function useGameController({
       );
       
       // Process validation results
-      // Fix 2: Properly type the validation results
       Object.entries(validationResults).forEach(([prizeType, result]) => {
-        // Fix 3: Type assertion and property access
         const typedResult = result as ValidationResult;
         
         if (typedResult.isValid && typedResult.winners.length > 0) {
@@ -358,17 +354,49 @@ export function useGameController({
       setIsPaused(true);
       pausedRef.current = true;
       
-      // Then update database
-      await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
-        status: 'paused'
-      });
-      
-      console.log('Game paused successfully');
+      // Then update database with multiple ways to handle permission issues
+      try {
+        // First attempt - direct path update
+        await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
+          status: 'paused',
+          isAutoCalling: false
+        });
+        console.log('Game paused successfully (Method 1)');
+      } catch (writeError) {
+        console.error('First pause method failed:', writeError);
+        
+        try {
+          // Second attempt - parent node update
+          const gameRef = ref(database, `hosts/${hostId}/currentGame`);
+          const snapshot = await get(gameRef);
+          
+          if (snapshot.exists()) {
+            const game = snapshot.val();
+            
+            // Try updating the entire gameState object
+            await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
+              ...game.gameState,
+              status: 'paused',
+              isAutoCalling: false
+            });
+            console.log('Game paused successfully (Method 2)');
+          } else {
+            throw new Error('Game data not found');
+          }
+        } catch (secondError) {
+          console.error('Second pause method failed:', secondError);
+          throw secondError; // Re-throw for outer catch
+        }
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to pause game';
       console.error('Error pausing game:', errorMsg);
       setError(errorMsg);
       onError?.(errorMsg);
+      
+      // Keep UI in sync even if server update fails
+      setIsPaused(true);
+      pausedRef.current = true;
     }
   }, [hostId, onError]);
   
@@ -389,26 +417,59 @@ export function useGameController({
         }
       }
       
-      // Update database first
-      await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
-        status: 'active'
-      });
+      // Try multiple update methods for better reliability
+      try {
+        // First attempt - direct path update
+        await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
+          status: 'active',
+          isAutoCalling: true
+        });
+        console.log('Game resumed successfully (Method 1)');
+      } catch (writeError) {
+        console.error('First resume method failed:', writeError);
+        
+        try {
+          // Second attempt - parent node update
+          const gameRef = ref(database, `hosts/${hostId}/currentGame`);
+          const snapshot = await get(gameRef);
+          
+          if (snapshot.exists()) {
+            const game = snapshot.val();
+            
+            // Try updating the entire gameState object
+            await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
+              ...game.gameState,
+              status: 'active',
+              isAutoCalling: true
+            });
+            console.log('Game resumed successfully (Method 2)');
+          } else {
+            throw new Error('Game data not found');
+          }
+        } catch (secondError) {
+          console.error('Second resume method failed:', secondError);
+          throw secondError; // Re-throw for outer catch
+        }
+      }
       
-      // Then update local state
+      // Update local state after successful database update
       setIsPaused(false);
       pausedRef.current = false;
       
-      // Schedule the first number call after the full delay
+      // Generate the first number immediately when game is started
+      await generateAndCallNumber();
+      
+      // Then schedule next numbers normally
       scheduleNextNumber();
       
-      console.log('Game resumed successfully');
+      console.log('Game resumed, number generation active');
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to resume game';
       console.error('Error resuming game:', errorMsg);
       setError(errorMsg);
       onError?.(errorMsg);
     }
-  }, [hostId, onError, scheduleNextNumber]);
+  }, [hostId, onError, scheduleNextNumber, generateAndCallNumber]);
   
   // Update call delay
   const setGameCallDelay = useCallback(async (delay: number) => {
