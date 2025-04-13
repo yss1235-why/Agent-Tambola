@@ -28,6 +28,7 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
     currentNumber,
     error: gameError,
     allPrizesWon,
+    gameCompleted,
     pauseGame,
     resumeGame,
     completeGame,
@@ -58,13 +59,16 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
       console.log("Game phase:", gameState.gameState?.phase);
       console.log("Called numbers:", gameState.numberSystem?.calledNumbers?.length || 0);
       
+      const isComplete = gameState.gameState?.status === 'ended' || 
+                        gameState.gameState?.phase === 4;
+      
       setIsLoading(false);
-      setIsGameComplete(gameState.gameState?.status === 'ended');
+      setIsGameComplete(isComplete);
       setLocalCallDelay(gameState.numberSystem?.callDelay || appConfig.gameDefaults.callDelay);
       setSoundEnabled(gameState.gameState?.soundEnabled || true);
       
       // Always initialize game in paused state when first entering the playing phase
-      if (gameState.gameState?.status !== 'paused' && 
+      if (!isComplete && gameState.gameState?.status !== 'paused' && 
           (gameState.numberSystem?.calledNumbers?.length === 0 || 
            appConfig.gameDefaults.startInPausedState)) {
         console.log('Initializing game in paused state');
@@ -74,9 +78,25 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
       setInitialized(true);
     } else if (gameState) {
       setIsLoading(false);
-      setIsGameComplete(gameState.gameState?.status === 'ended');
+      setIsGameComplete(gameState.gameState?.status === 'ended' || 
+                        gameState.gameState?.phase === 4 ||
+                        gameCompleted);
     }
-  }, [currentUser, gameState, navigate, initialized]);
+  }, [currentUser, gameState, navigate, initialized, gameCompleted]);
+
+  // Keep track of game completion status
+  useEffect(() => {
+    if (gameCompleted) {
+      setIsGameComplete(true);
+    }
+  }, [gameCompleted]);
+
+  // Keep track of all prizes won status
+  useEffect(() => {
+    if (allPrizesWon && !isGameComplete) {
+      console.log("All prizes have been won - updating UI");
+    }
+  }, [allPrizesWon, isGameComplete]);
 
   // Keep call delay in sync
   useEffect(() => {
@@ -156,6 +176,11 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
       return;
     }
     
+    if (isGameComplete && status === 'active') {
+      setError('Cannot resume game: Game is already completed');
+      return;
+    }
+    
     console.log(`Changing game status to: ${status}`);
     
     try {
@@ -196,7 +221,7 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
         setError(handleApiError(err, 'Failed to change game status'));
       }
     }
-  }, [pauseGame, resumeGame, allPrizesWon, currentUser]);
+  }, [pauseGame, resumeGame, allPrizesWon, currentUser, isGameComplete]);
 
   const handleGameEnd = useCallback(async () => {
     try {
