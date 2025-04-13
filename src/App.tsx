@@ -4,12 +4,11 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { GameProvider } from './contexts/GameContext';
-import MainLayout from './components/Layouts/MainLayout'; // Fixed case sensitivity issue
+import MainLayout from './components/Layouts/MainLayout';
 import Dashboard from './components/Dashboard/Dashboard';
 import Login from './components/Auth/Login';
 import SubscriptionPage from './components/Auth/SubscriptionPage';
 import PlayingPhase from './components/Dashboard/GamePhases/PlayingPhase/PlayingPhase';
-import GameAnalytics from './components/Analytics/GameAnalytics';
 import UserProfile from './components/Profile/UserProfile';
 import UserSettings from './components/Settings/UserSettings';
 import SessionHistory from './components/History/SessionHistory';
@@ -99,17 +98,7 @@ const App: React.FC = () => {
                 } 
               />
               
-              {/* Analytics and history routes with GameProvider */}
-              <Route 
-                path="/analytics" 
-                element={
-                  <ProtectedRoute 
-                    element={
-                      <GameRoutes element={<GameAnalytics />} />
-                    } 
-                  />
-                } 
-              />
+              {/* History route with GameProvider */}
               <Route 
                 path="/history" 
                 element={
