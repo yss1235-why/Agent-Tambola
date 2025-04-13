@@ -53,6 +53,11 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
     }
     
     if (gameState && !initialized) {
+      console.log("Initializing PlayingPhase with game state:", gameState);
+      console.log("Game status:", gameState.gameState?.status);
+      console.log("Game phase:", gameState.gameState?.phase);
+      console.log("Called numbers:", gameState.numberSystem?.calledNumbers?.length || 0);
+      
       setIsLoading(false);
       setIsGameComplete(gameState.gameState?.status === 'ended');
       setLocalCallDelay(gameState.numberSystem?.callDelay || appConfig.gameDefaults.callDelay);
