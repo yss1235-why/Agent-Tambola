@@ -3,7 +3,7 @@
 
 const appConfig = {
   // Host Configuration
-  hostUID: "SMRyGxVTVRcDOcvi9wtfO8rzkjf1", // Replace with your actual host UID
+  hostUID: "Xa94GGCM9LOJF59EFA8jJLyjW2v2", // Replace with your actual host UID
   
   // Application Information
   appTitle: "Jo's & Nim's",
