@@ -52,6 +52,10 @@ function PlayingPhaseView({
     averageSpeed: 0 
   });
 
+  // Check for active prize configuration
+  const hasActivePrizes = currentGame && Object.values(currentGame.settings.prizes).some(isActive => isActive);
+  const hasBookedTickets = currentGame && Object.keys(currentGame.activeTickets.bookings || {}).length > 0;
+
   useEffect(() => {
     // Calculate game statistics
     if (currentGame) {
@@ -75,10 +79,26 @@ function PlayingPhaseView({
     }
   }, [currentGame]);
 
+  // Show warning toast if no prizes configured or no tickets booked
+  useEffect(() => {
+    if (currentGame && !isGameComplete) {
+      if (!hasActivePrizes) {
+        setToastMessage('No active prizes configured. Prize detection is disabled.');
+        setToastType('warning');
+        setShowToast(true);
+      } else if (!hasBookedTickets) {
+        setToastMessage('No tickets have been booked. Prize detection is disabled.');
+        setToastType('warning');
+        setShowToast(true);
+      }
+    }
+  }, [currentGame, hasActivePrizes, hasBookedTickets, isGameComplete]);
+
   // Check for new winners
   useEffect(() => {
     if (!winners) return;
     
+    // Count total winners across all prize types
     const currentWinnerCount = Object.values(winners).reduce((acc, arr) => acc + arr.length, 0);
     
     if (currentWinnerCount > lastWinnerCount && lastWinnerCount > 0) {
@@ -108,7 +128,7 @@ function PlayingPhaseView({
   const { gameState, numberSystem, activeTickets, settings } = currentGame;
   
   // Determine game status based on gameState
-  const gameStatus = (gameState.status === 'active' || gameState.status === 'paused') 
+  const gameStatus = gameState.status === 'active' || gameState.status === 'paused' 
     ? gameState.status 
     : 'paused';
 
@@ -130,6 +150,40 @@ function PlayingPhaseView({
                 <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
               </svg>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Prize Configuration Warning */}
+      {!isGameComplete && !hasActivePrizes && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertCircle className="h-5 w-5 text-yellow-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">Prize Configuration Warning</h3>
+              <div className="mt-2 text-sm text-yellow-700">
+                <p>No prizes have been configured for this game. Prize detection is disabled.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ticket Booking Warning */}
+      {!isGameComplete && hasActivePrizes && !hasBookedTickets && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertCircle className="h-5 w-5 text-yellow-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">Booking Warning</h3>
+              <div className="mt-2 text-sm text-yellow-700">
+                <p>No tickets have been booked for this game. Prize detection is disabled.</p>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -180,8 +234,7 @@ function PlayingPhaseView({
             <div className="flex justify-center pt-6">
               <button
                 onClick={onStartNewGame}
-                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 
-                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 Start New Game
               </button>
