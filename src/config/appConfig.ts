@@ -10,16 +10,16 @@ const appConfig = {
   appShortName: "Jo's & Nim's",
   companyName: "Jo's & Nim's",
   
-  // Firebase Configuration (should match your firebase.ts file)
+  // Firebase Configuration
   firebaseConfig: {
-    apiKey: "AIzaSyCH2WtQ2y3ln8ToHcapIsEMIXJ78Hsg7Bg",
-    authDomain: "tambola-74046.firebaseapp.com",
-    databaseURL: "https://tambola-74046-default-rtdb.firebaseio.com",
-    projectId: "tambola-74046",
-    storageBucket: "tambola-74046.firebasestorage.app",
-    messagingSenderId: "310265084192",
-    appId: "1:310265084192:web:c044bf9b83c444f4a2ff45",
-    measurementId: "G-MP72F136BH"
+    apiKey: "AIzaSyCvP2xYmtArCRGYo-5sN3blRZ_f7DChbLA",
+    authDomain: "tambola-b13dc.firebaseapp.com",
+    databaseURL: "https://tambola-b13dc-default-rtdb.firebaseio.com",
+    projectId: "tambola-b13dc",
+    storageBucket: "tambola-b13dc.firebasestorage.app",
+    messagingSenderId: "368426861678",
+    appId: "1:368426861678:web:27d907f113cb4f9f84d27f",
+    measurementId: "G-BRPR34NXX5"
   },
   
   // UI Configuration
