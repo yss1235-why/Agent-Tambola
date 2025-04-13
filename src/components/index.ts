@@ -11,8 +11,10 @@ export { default as Toast } from './Common/Toast';
 export { default as GameControls } from './GameControls';
 export { default as SubscriptionPage } from './Auth/SubscriptionPage';
 
-/*
-export { default as Toast } from './Common/Toast';
+// Main Layout
+export { default as MainLayout } from './Layouts/MainLayout';
+
+// Dashboard components
 export { default as Dashboard } from './Dashboard/Dashboard';
 export { default as DashboardHeader } from './Dashboard/DashboardHeader';
 export { default as GameSetup } from './Dashboard/GamePhases/GameSetup/GameSetup';
@@ -21,10 +23,9 @@ export { default as PlayingPhase } from './Dashboard/GamePhases/PlayingPhase/Pla
 export { default as PlayingPhaseView } from './Dashboard/GamePhases/PlayingPhase/PlayingPhaseView';
 export { default as NumberBoard } from './Dashboard/GamePhases/PlayingPhase/components/NumberBoard';
 export { default as WinnerDisplay } from './Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay';
+
+// Auth and user components
 export { default as Login } from './Auth/Login';
 export { default as UserProfile } from './Profile/UserProfile';
 export { default as UserSettings } from './Settings/UserSettings';
-export { default as GameAnalytics } from './Analytics/GameAnalytics';
 export { default as SessionHistory } from './History/SessionHistory';
-export { default as MainLayout } from './layouts/MainLayout';
-*/
