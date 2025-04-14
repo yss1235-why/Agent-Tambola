@@ -1,7 +1,7 @@
 // src/hooks/useGameController.ts
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ref, update, get, onValue } from 'firebase/database';
+import { ref, update, get, onValue, set } from 'firebase/database';
 import { database } from '../lib/firebase';
 import { AudioManager } from '../utils/audioManager';
 import { PrizeValidationService } from '../services/PrizeValidationService';
@@ -337,7 +337,7 @@ export function useGameController({
     return false;
   }, [generateAndCallNumber, allPrizesWon]);
   
-  // Game control functions
+  // Game control functions - UPDATED FOR PERMISSION ISSUES
   const pauseGame = useCallback(async () => {
     if (!hostId) return;
     
@@ -354,40 +354,28 @@ export function useGameController({
       setIsPaused(true);
       pausedRef.current = true;
       
-      // Then update database with multiple ways to handle permission issues
-      try {
-        // First attempt - direct path update
-        await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
-          status: 'paused',
-          isAutoCalling: false
-        });
-        console.log('Game paused successfully (Method 1)');
-      } catch (writeError) {
-        console.error('First pause method failed:', writeError);
-        
-        try {
-          // Second attempt - parent node update
-          const gameRef = ref(database, `hosts/${hostId}/currentGame`);
-          const snapshot = await get(gameRef);
-          
-          if (snapshot.exists()) {
-            const game = snapshot.val();
-            
-            // Try updating the entire gameState object
-            await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
-              ...game.gameState,
-              status: 'paused',
-              isAutoCalling: false
-            });
-            console.log('Game paused successfully (Method 2)');
-          } else {
-            throw new Error('Game data not found');
-          }
-        } catch (secondError) {
-          console.error('Second pause method failed:', secondError);
-          throw secondError; // Re-throw for outer catch
-        }
+      // Get current game state first
+      const gameRef = ref(database, `hosts/${hostId}/currentGame`);
+      const snapshot = await get(gameRef);
+      
+      if (!snapshot.exists()) {
+        throw new Error('Cannot pause: Game data not found');
       }
+      
+      // Extract the full game data
+      const gameData = snapshot.val();
+      
+      // Create a copy of the game state with updated status
+      const updatedGameState = {
+        ...gameData.gameState,
+        status: 'paused',
+        isAutoCalling: false,
+        lastUpdated: Date.now()
+      };
+      
+      // Update the entire game state object rather than individual properties
+      await set(ref(database, `hosts/${hostId}/currentGame/gameState`), updatedGameState);
+      console.log('Game paused successfully');
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to pause game';
       console.error('Error pausing game:', errorMsg);
@@ -406,51 +394,31 @@ export function useGameController({
     try {
       console.log('Resuming game...');
       
-      // First check if all prizes have been won
+      // Get current game state first
       const gameRef = ref(database, `hosts/${hostId}/currentGame`);
       const snapshot = await get(gameRef);
       
-      if (snapshot.exists()) {
-        const game = snapshot.val() as Game.CurrentGame;
-        if (game.gameState?.allPrizesWon) {
-          throw new Error('All prizes have been won, cannot resume game');
-        }
+      if (!snapshot.exists()) {
+        throw new Error('Cannot resume: Game data not found');
       }
       
-      // Try multiple update methods for better reliability
-      try {
-        // First attempt - direct path update
-        await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
-          status: 'active',
-          isAutoCalling: true
-        });
-        console.log('Game resumed successfully (Method 1)');
-      } catch (writeError) {
-        console.error('First resume method failed:', writeError);
-        
-        try {
-          // Second attempt - parent node update
-          const gameRef = ref(database, `hosts/${hostId}/currentGame`);
-          const snapshot = await get(gameRef);
-          
-          if (snapshot.exists()) {
-            const game = snapshot.val();
-            
-            // Try updating the entire gameState object
-            await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
-              ...game.gameState,
-              status: 'active',
-              isAutoCalling: true
-            });
-            console.log('Game resumed successfully (Method 2)');
-          } else {
-            throw new Error('Game data not found');
-          }
-        } catch (secondError) {
-          console.error('Second resume method failed:', secondError);
-          throw secondError; // Re-throw for outer catch
-        }
+      // Check if all prizes have been won
+      const gameData = snapshot.val();
+      if (gameData.gameState?.allPrizesWon) {
+        throw new Error('All prizes have been won, cannot resume game');
       }
+      
+      // Create a copy of the game state with updated status
+      const updatedGameState = {
+        ...gameData.gameState,
+        status: 'active',
+        isAutoCalling: true,
+        lastUpdated: Date.now()
+      };
+      
+      // Update the entire game state object
+      await set(ref(database, `hosts/${hostId}/currentGame/gameState`), updatedGameState);
+      console.log('Game resumed successfully');
       
       // Update local state after successful database update
       setIsPaused(false);
@@ -484,10 +452,24 @@ export function useGameController({
     
     if (hostId) {
       try {
-        // Update callDelay in Firebase
-        await update(ref(database, `hosts/${hostId}/currentGame/numberSystem`), {
+        // First get the current game state
+        const gameRef = ref(database, `hosts/${hostId}/currentGame`);
+        const snapshot = await get(gameRef);
+        
+        if (!snapshot.exists()) {
+          throw new Error('Cannot update delay: Game data not found');
+        }
+        
+        const gameData = snapshot.val();
+        
+        // Create updated numberSystem object
+        const updatedNumberSystem = {
+          ...gameData.numberSystem,
           callDelay: validDelay
-        });
+        };
+        
+        // Update the entire numberSystem object
+        await set(ref(database, `hosts/${hostId}/currentGame/numberSystem`), updatedNumberSystem);
         
         // If game is active, reschedule next number with new delay
         if (!pausedRef.current && timeoutRef.current) {
