@@ -12,6 +12,20 @@ import { LoadingSpinner } from '@components';
 import { Game, GAME_PHASES, GAME_STATUSES } from '../../types/game';
 import SubscriptionExpiredPrompt from './SubscriptionExpiredPrompt';
 
+// Define default values to avoid type errors
+const DEFAULT_PRIZES: Game.Settings['prizes'] = {
+  quickFive: true,
+  topLine: true,
+  middleLine: true,
+  bottomLine: true,
+  corners: true,
+  starCorners: false,
+  halfSheet: true,
+  fullSheet: true,
+  fullHouse: true,
+  secondFullHouse: false,
+};
+
 const DEFAULT_GAME_STATE: Game.GameState = {
   phase: GAME_PHASES.SETUP,
   status: GAME_STATUSES.SETUP,
@@ -43,18 +57,7 @@ const DEFAULT_SETTINGS: Game.Settings = {
   selectedTicketSet: 1,
   callDelay: 5,
   hostPhone: '',
-  prizes: {
-    quickFive: true,
-    topLine: true,
-    middleLine: true,
-    bottomLine: true,
-    corners: true,
-    starCorners: false,
-    halfSheet: true,
-    fullSheet: true,
-    fullHouse: true,
-    secondFullHouse: false
-  }
+  prizes: DEFAULT_PRIZES
 };
 
 function Dashboard() {
@@ -78,6 +81,18 @@ function Dashboard() {
           // Ensure gameState exists with a valid phase
           if (!gameData.gameState || !gameData.gameState.phase) {
             gameData.gameState = { ...DEFAULT_GAME_STATE };
+          }
+          
+          // Ensure settings are complete
+          if (!gameData.settings) {
+            gameData.settings = { ...DEFAULT_SETTINGS };
+          } else if (!gameData.settings.prizes) {
+            gameData.settings.prizes = { ...DEFAULT_PRIZES };
+          }
+          
+          // Ensure numberSystem is complete
+          if (!gameData.numberSystem) {
+            gameData.numberSystem = { ...DEFAULT_NUMBER_SYSTEM };
           }
         }
         setCurrentGame(gameData);
@@ -114,6 +129,16 @@ function Dashboard() {
         // Use stored default settings
         console.log('Using default settings from previous game');
         gameSettings = snapshot.val();
+        
+        // Ensure prizes property exists
+        if (!gameSettings.prizes) {
+          gameSettings.prizes = DEFAULT_PRIZES;
+        }
+        
+        // Ensure maxTickets property exists
+        if (!gameSettings.maxTickets) {
+          gameSettings.maxTickets = 90;
+        }
       }
       
       const gameRef = ref(database, `hosts/${currentUser.uid}/currentGame`);
@@ -156,6 +181,7 @@ function Dashboard() {
       case GAME_PHASES.BOOKING:
         return <BookingPhase currentGame={typedGame} />;
       case GAME_PHASES.PLAYING:
+        // Pass all required props to PlayingPhase
         return <PlayingPhase currentGame={typedGame} />;
       default:
         // If phase is invalid or 4 (completed), show the "Start New Game" option
