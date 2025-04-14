@@ -1,15 +1,22 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+// src/components/Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay.tsx
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { UserCircle, Phone, Clock, Trophy, Award, Download, Printer } from 'lucide-react';
 import type { Game } from '../../../../../types/game';
 
-interface WinnerDisplayProps {
-  winners?: Game.Winners;
-  tickets: Record<string, Game.Ticket>;
-  bookings: Record<string, Game.Booking>;
-  prizes: Game.Settings['prizes'];
-  showAllPrizes?: boolean;
-  onWinnerNotification?: (prizeType: string, playerName: string) => void;
-}
+// Define default prizes configuration
+const DEFAULT_PRIZES: Game.Settings['prizes'] = {
+  quickFive: false,
+  topLine: false,
+  middleLine: false,
+  bottomLine: false,
+  corners: false,
+  starCorners: false,
+  halfSheet: false,
+  fullSheet: false,
+  fullHouse: false,
+  secondFullHouse: false,
+};
 
 interface WinnerInfo {
   prizeType: string;
@@ -19,11 +26,20 @@ interface WinnerInfo {
   timestamp?: number;
 }
 
+interface WinnerDisplayProps {
+  winners?: Game.Winners;
+  tickets: Record<string, Game.Ticket>;
+  bookings: Record<string, Game.Booking>;
+  prizes?: Game.Settings['prizes']; // Make prizes optional
+  showAllPrizes?: boolean;
+  onWinnerNotification?: (prizeType: string, playerName: string) => void;
+}
+
 export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({ 
-  winners,
-  tickets, 
-  bookings, 
-  prizes,
+  winners = {},
+  tickets = {}, 
+  bookings = {}, 
+  prizes = DEFAULT_PRIZES,  // Provide default value
   showAllPrizes = false,
   onWinnerNotification
 }) => {
@@ -44,20 +60,22 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
         if (!prizes[prizeType as keyof typeof prizes]) return;
         
         // Count for statistics
-        prizeStats[prizeType] = ticketIds.length;
+        prizeStats[prizeType] = Array.isArray(ticketIds) ? ticketIds.length : 0;
         
-        ticketIds.forEach((ticketId: string) => {
-          const booking = bookings[ticketId];
-          if (booking) {
-            formattedWinners.push({
-              prizeType: prizeType.replace(/([A-Z])/g, ' $1').trim(),
-              ticketId,
-              playerName: booking.playerName,
-              phoneNumber: booking.phoneNumber,
-              timestamp: booking.timestamp
-            });
-          }
-        });
+        if (Array.isArray(ticketIds)) {
+          ticketIds.forEach((ticketId: string) => {
+            const booking = bookings[ticketId];
+            if (booking) {
+              formattedWinners.push({
+                prizeType: prizeType.replace(/([A-Z])/g, ' $1').trim(),
+                ticketId,
+                playerName: booking.playerName,
+                phoneNumber: booking.phoneNumber,
+                timestamp: booking.timestamp
+              });
+            }
+          });
+        }
       });
     }
 
@@ -159,7 +177,7 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
               </tr>
             </thead>
             <tbody>
-              ${displayedWinners.map(winner => `
+              ${displayedWinners.map((winner) => `
                 <tr>
                   <td class="prize">${winner.prizeType}</td>
                   <td>${winner.ticketId}</td>
@@ -186,7 +204,7 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
     if (displayedWinners.length === 0) return;
     
     const headers = ['Prize Type', 'Ticket ID', 'Player Name', 'Phone Number', 'Timestamp'];
-    const csvContent = displayedWinners.map(winner => {
+    const csvContent = displayedWinners.map((winner) => {
       const timestamp = winner.timestamp 
         ? new Date(winner.timestamp).toLocaleString() 
         : 'N/A';
@@ -215,7 +233,7 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
   }, [displayedWinners]);
 
   // If no winners data exists yet
-  if (!winners || displayedWinners.length === 0) {
+  if (!winners || Object.values(winners).every(arr => !arr || arr.length === 0)) {
     return (
       <div className="bg-white rounded-lg border p-4">
         <div className="flex items-center justify-between mb-4">
@@ -330,7 +348,7 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
         <div className="p-4">
           <h4 className="text-sm font-medium text-gray-700 mb-3">Prize Distribution</h4>
           <div className="space-y-3">
-            {Object.entries(prizes).map(([prizeKey, isEnabled]) => {
+            {Object.entries(prizes || {}).map(([prizeKey, isEnabled]) => {
               if (!isEnabled) return null;
               
               const prizeType = prizeKey.replace(/([A-Z])/g, ' $1').trim();
