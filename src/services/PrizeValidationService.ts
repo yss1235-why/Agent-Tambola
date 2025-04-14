@@ -133,6 +133,12 @@ export class PrizeValidationService {
           continue;
         }
 
+        // NEW CONDITION: For fullSheet, only check if halfSheet has been won
+        if (prizeType === 'fullSheet' && (!currentWinners?.halfSheet || currentWinners.halfSheet.length === 0)) {
+          console.log('Full Sheet requires Half Sheet to be won first, skipping');
+          continue;
+        }
+
         console.log(`Validating prize type: ${prizeType}`);
         
         if (prizeType === 'fullSheet') {
@@ -216,9 +222,9 @@ export class PrizeValidationService {
               const playerName = bookings[ticketIds[0]].playerName;
               console.log(`Sheet ${sheetNum}: All tickets booked by same player: "${playerName}"`);
               
-              // Check AT LEAST one number called per ticket
+              // MODIFIED: Check AT LEAST TWO numbers called per ticket
               console.log(`Sheet ${sheetNum}: Checking called numbers per ticket...`);
-              let allTicketsHaveAtLeastOneNumber = true;
+              let allTicketsHaveAtLeastTwoNumbers = true;
               const ticketResults: {id: string, calledCount: number, calledNumbers: number[]}[] = [];
               
               for (const ticket of ticketsInSheet) {
@@ -233,8 +239,9 @@ export class PrizeValidationService {
                   calledNumbers: ticketCalledNumbers
                 });
                 
-                if (ticketCalledNumbers.length < 1) {
-                  allTicketsHaveAtLeastOneNumber = false;
+                // MODIFIED: Changed from < 1 to < 2
+                if (ticketCalledNumbers.length < 2) {
+                  allTicketsHaveAtLeastTwoNumbers = false;
                 }
               }
               
@@ -243,10 +250,11 @@ export class PrizeValidationService {
                 console.log(`- Ticket ${result.id}: ${result.calledCount} number(s) called [${result.calledNumbers.join(', ')}]`);
               });
               
-              console.log(`Sheet ${sheetNum}: At least one number per ticket: ${allTicketsHaveAtLeastOneNumber}`);
+              // MODIFIED: Changed variable name to reflect new requirement
+              console.log(`Sheet ${sheetNum}: At least two numbers per ticket: ${allTicketsHaveAtLeastTwoNumbers}`);
               
               // If valid, mark as a winner
-              if (allTicketsHaveAtLeastOneNumber) {
+              if (allTicketsHaveAtLeastTwoNumbers) {
                 console.log(`*** FULL SHEET WIN FOUND! - Sheet ${sheetNum} - Player: ${playerName} ***`);
                 results[prizeType].winners = ticketIds;
                 results[prizeType].isValid = true;
@@ -255,7 +263,7 @@ export class PrizeValidationService {
                 foundValidSheet = true;
                 break;
               } else {
-                console.log(`Sheet ${sheetNum}: INVALID - Does not have exactly one number called per ticket`);
+                console.log(`Sheet ${sheetNum}: INVALID - Does not have at least two numbers called per ticket`);
               }
             }
             
