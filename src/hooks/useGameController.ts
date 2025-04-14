@@ -42,12 +42,15 @@ export function useGameController({
   const [gameState, setGameState] = useState<Game.CurrentGame | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [allPrizesWon, setAllPrizesWon] = useState(false);
+  const [isGameEnded, setIsGameEnded] = useState(false);
   
   // Refs for mutable state
   const processingRef = useRef(isProcessing);
   const pausedRef = useRef(isPaused);
   const callDelayRef = useRef(callDelay);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const allPrizesWonRef = useRef(allPrizesWon);
+  const isGameEndedRef = useRef(isGameEnded);
   const audioManager = AudioManager.getInstance();
   
   // Update refs when state changes
@@ -55,7 +58,9 @@ export function useGameController({
     processingRef.current = isProcessing;
     pausedRef.current = isPaused;
     callDelayRef.current = callDelay;
-  }, [isProcessing, isPaused, callDelay]);
+    allPrizesWonRef.current = allPrizesWon;
+    isGameEndedRef.current = isGameEnded;
+  }, [isProcessing, isPaused, callDelay, allPrizesWon, isGameEnded]);
 
   // Clean up timeouts on unmount
   useEffect(() => {
@@ -85,6 +90,31 @@ export function useGameController({
         
         setGameState(gameData);
         
+        // Check for game end conditions
+        const isEnded = gameData.gameState?.status === 'ended' || gameData.gameState?.phase === 4;
+        setIsGameEnded(isEnded);
+        isGameEndedRef.current = isEnded;
+        
+        // Check for all prizes won
+        const prizesWon = gameData.gameState?.allPrizesWon || false;
+        setAllPrizesWon(prizesWon);
+        allPrizesWonRef.current = prizesWon;
+        
+        // If all prizes have been won or game has ended, stop auto calling
+        if (prizesWon || isEnded) {
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+          }
+          setIsPaused(true);
+          pausedRef.current = true;
+          
+          // Call onGameComplete callback if game has ended due to all prizes won
+          if (prizesWon && !isEnded && onGameComplete) {
+            onGameComplete();
+          }
+        }
+        
         // Update local pause state based on game state
         const isPausedState = gameData.gameState?.status === 'paused';
         
@@ -97,7 +127,6 @@ export function useGameController({
         setCalledNumbers(gameData.numberSystem?.calledNumbers || []);
         setQueueNumbers(gameData.numberSystem?.queue || []);
         setCurrentNumber(gameData.numberSystem?.currentNumber);
-        setAllPrizesWon(gameData.gameState?.allPrizesWon || false);
         onQueueChanged?.(gameData.numberSystem?.queue || []);
       }
     });
@@ -106,7 +135,7 @@ export function useGameController({
       console.log('Cleaning up game state listener');
       unsubscribe();
     };
-  }, [hostId, onQueueChanged]);
+  }, [hostId, onQueueChanged, onGameComplete]);
   
   // Prize validation functionality
   const validatePrizes = useCallback(async (newCalledNumbers: number[]) => {
@@ -179,6 +208,7 @@ export function useGameController({
       await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
         phase: 4, // Completed phase
         status: 'ended',
+        isAutoCalling: false,
         lastUpdated: timestamp
       });
       
@@ -188,6 +218,10 @@ export function useGameController({
         endTime: timestamp,
         endReason: 'Game completed'
       });
+      
+      // Update local state
+      setIsGameEnded(true);
+      isGameEndedRef.current = true;
       
       console.log('Game completed successfully');
       onGameComplete?.();
@@ -200,9 +234,12 @@ export function useGameController({
   
   // Auto-calling - now using sequential timeouts for consistent timing
   const generateAndCallNumber = useCallback(async () => {
-    if (!hostId || processingRef.current || pausedRef.current || allPrizesWon) {
-      if (allPrizesWon) {
+    // Return early if any of these conditions are true
+    if (!hostId || processingRef.current || pausedRef.current || allPrizesWonRef.current || isGameEndedRef.current) {
+      if (allPrizesWonRef.current) {
         console.log("Cannot generate number: All prizes have been won");
+      } else if (isGameEndedRef.current) {
+        console.log("Cannot generate number: Game has ended");
       } else if (pausedRef.current) {
         console.log("Cannot generate number: Game is paused");
       } else if (processingRef.current) {
@@ -226,10 +263,13 @@ export function useGameController({
       
       const game = snapshot.val() as Game.CurrentGame;
       
-      // Check if all prizes won
-      if (game.gameState?.allPrizesWon) {
-        console.log('All prizes have been won, stopping number generation');
-        setAllPrizesWon(true);
+      // Check if all prizes won or game has ended
+      if (game.gameState?.allPrizesWon || game.gameState?.status === 'ended') {
+        console.log('All prizes have been won or game has ended, stopping number generation');
+        setAllPrizesWon(game.gameState?.allPrizesWon || false);
+        setIsGameEnded(game.gameState?.status === 'ended');
+        allPrizesWonRef.current = game.gameState?.allPrizesWon || false;
+        isGameEndedRef.current = game.gameState?.status === 'ended';
         setIsProcessing(false);
         processingRef.current = false;
         return;
@@ -301,12 +341,12 @@ export function useGameController({
       processingRef.current = false;
       console.log('Number generation complete, processing state reset');
       
-      // Schedule the next number only if the game is still active
-      if (!pausedRef.current && !allPrizesWon) {
+      // Schedule the next number only if the game is still active and all prizes are not won
+      if (!pausedRef.current && !allPrizesWonRef.current && !isGameEndedRef.current) {
         scheduleNextNumber();
       }
     }
-  }, [hostId, allPrizesWon, onNumberCalled, onError, completeGame, validatePrizes, audioManager]);
+  }, [hostId, completeGame, onNumberCalled, onError, validatePrizes, audioManager]);
   
   // Sequential scheduling with proper delay
   const scheduleNextNumber = useCallback(() => {
@@ -316,13 +356,13 @@ export function useGameController({
       timeoutRef.current = null;
     }
     
-    // Only schedule if not paused and not all prizes won
-    if (!pausedRef.current && !allPrizesWon) {
+    // Only schedule if not paused and not all prizes won and game not ended
+    if (!pausedRef.current && !allPrizesWonRef.current && !isGameEndedRef.current) {
       console.log(`Scheduling next number with ${callDelayRef.current} second delay`);
       
       // Set timeout with exact configured delay
       timeoutRef.current = setTimeout(() => {
-        if (!pausedRef.current && !allPrizesWon) {
+        if (!pausedRef.current && !allPrizesWonRef.current && !isGameEndedRef.current) {
           generateAndCallNumber().catch(err => {
             console.error('Error in scheduled number generation:', err);
           });
@@ -332,10 +372,12 @@ export function useGameController({
       return true;
     }
     
-    console.log('Not scheduling next number:', 
-      pausedRef.current ? 'game is paused' : 'all prizes won');
+    console.log('Not scheduling next number:',
+      pausedRef.current ? 'game is paused' : 
+      allPrizesWonRef.current ? 'all prizes won' : 
+      isGameEndedRef.current ? 'game has ended' : 'unknown reason');
     return false;
-  }, [generateAndCallNumber, allPrizesWon]);
+  }, [generateAndCallNumber, allPrizesWonRef, isGameEndedRef]);
   
   // Game control functions - UPDATED FOR PERMISSION ISSUES
   const pauseGame = useCallback(async () => {
@@ -394,6 +436,12 @@ export function useGameController({
     try {
       console.log('Resuming game...');
       
+      // Don't allow resuming if all prizes have been won or game has ended
+      if (allPrizesWonRef.current || isGameEndedRef.current) {
+        const reason = allPrizesWonRef.current ? 'all prizes have been won' : 'game has ended';
+        throw new Error(`Cannot resume game because ${reason}`);
+      }
+      
       // Get current game state first
       const gameRef = ref(database, `hosts/${hostId}/currentGame`);
       const snapshot = await get(gameRef);
@@ -406,6 +454,11 @@ export function useGameController({
       const gameData = snapshot.val();
       if (gameData.gameState?.allPrizesWon) {
         throw new Error('All prizes have been won, cannot resume game');
+      }
+      
+      // Check if game has ended
+      if (gameData.gameState?.status === 'ended') {
+        throw new Error('Game has ended, cannot resume');
       }
       
       // Create a copy of the game state with updated status
@@ -496,6 +549,7 @@ export function useGameController({
     gameState,
     error,
     allPrizesWon,
+    isGameEnded,
     
     // Game control functions
     pauseGame,
