@@ -1,5 +1,5 @@
 // src/components/Dashboard/GamePhases/PlayingPhase/components/SafeWinnerDisplay.tsx
-import { useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { UserCircle, Phone, Clock, Trophy, Award, Download, Printer } from 'lucide-react';
 import type { Game } from '../../../../../types/game';
 
@@ -179,7 +179,7 @@ export const SafeWinnerDisplay: React.FC<WinnerDisplayProps> = ({
               </tr>
             </thead>
             <tbody>
-              ${displayedWinners.map(winner => `
+              ${displayedWinners.map((winner: WinnerInfo) => `
                 <tr>
                   <td class="prize">${winner.prizeType}</td>
                   <td>${winner.ticketId}</td>
@@ -206,7 +206,7 @@ export const SafeWinnerDisplay: React.FC<WinnerDisplayProps> = ({
     if (displayedWinners.length === 0) return;
     
     const headers = ['Prize Type', 'Ticket ID', 'Player Name', 'Phone Number', 'Timestamp'];
-    const csvContent = displayedWinners.map(winner => {
+    const csvContent = displayedWinners.map((winner: WinnerInfo) => {
       const timestamp = winner.timestamp 
         ? new Date(winner.timestamp).toLocaleString() 
         : 'N/A';
@@ -289,7 +289,7 @@ export const SafeWinnerDisplay: React.FC<WinnerDisplayProps> = ({
 
       {activeTab === 'recent' && (
         <div className="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
-          {displayedWinners.map((winner, index) => {
+          {displayedWinners.map((winner: WinnerInfo, index: number) => {
             const winnerId = `${winner.ticketId}-${winner.prizeType}-${index}`;
             const isHighlighted = winnerId === highlightedWinner;
             
