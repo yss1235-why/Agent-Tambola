@@ -755,7 +755,7 @@ export class PrizeValidationService {
     return allMarked;
   }
 
-  // Improved to check against latest database state
+  // Improved to check against latest database state and end game when all prizes won
   private async checkAllPrizesWon(
     activePrizes: Game.Settings['prizes'], 
     winners: Game.Winners
@@ -774,7 +774,7 @@ export class PrizeValidationService {
       });
     
     if (allPrizesWon) {
-      console.log('All active prizes have been won! Disabling number generation.');
+      console.log('All active prizes have been won! Disabling number generation and ending game.');
       
       try {
         // Check current state first to avoid race conditions
@@ -786,10 +786,12 @@ export class PrizeValidationService {
           return;
         }
         
-        // Update game state with all prizes won flag
+        // Update game state with all prizes won flag AND CHANGE GAME STATUS TO ENDED
         await update(ref(database, `hosts/${this.hostId}/currentGame/gameState`), {
           allPrizesWon: true,
-          isAutoCalling: false
+          isAutoCalling: false,
+          status: 'ended',  // This will effectively end the game
+          phase: 4  // Set to completed phase
         });
         
         // Clear any existing queue
@@ -797,7 +799,34 @@ export class PrizeValidationService {
           queue: []
         });
         
-        console.log('Successfully updated game state with allPrizesWon flag');
+        // Create session record with completed status
+        const gameRef = ref(database, `hosts/${this.hostId}/currentGame`);
+        const gameSnapshot = await get(gameRef);
+        
+        if (gameSnapshot.exists()) {
+          const game = gameSnapshot.val();
+          const timestamp = Date.now();
+          
+          // Save to game history
+          await set(ref(database, `hosts/${this.hostId}/sessions/${timestamp}`), {
+            ...game,
+            endTime: timestamp,
+            endReason: 'All prizes won'
+          });
+        }
+        
+        console.log('Successfully updated game state and created history record for all prizes won');
+        
+        // Send a notification about game ending
+        this.notificationManager.showNotification({
+          title: 'Game Completed',
+          message: 'All prizes have been won! The game has ended automatically.',
+          type: 'system',
+          priority: 'high',
+          playSound: true,
+          requireInteraction: true
+        });
+        
       } catch (error) {
         console.error('Error updating game state after all prizes won:', error);
       }
