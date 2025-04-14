@@ -1,6 +1,6 @@
 // src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhaseView.tsx
 import { useState, useEffect } from 'react';
-import { AlertCircle, Award } from 'lucide-react'; 
+import { AlertCircle, Award, Check, Trophy } from 'lucide-react'; 
 import { GameControls, LoadingSpinner, Toast } from '@components';
 import NumberBoard from './components/NumberBoard';
 import WinnerDisplay from './components/WinnerDisplay';
@@ -107,9 +107,18 @@ function PlayingPhaseView({
     }
   }, [currentGame, numberSystem, activeTickets]);
 
+  // Show all prizes won toast when condition is met
+  useEffect(() => {
+    if (allPrizesWon && !isGameComplete) {
+      setToastMessage('All prizes have been won! Game is ending automatically.');
+      setToastType('success');
+      setShowToast(true);
+    }
+  }, [allPrizesWon, isGameComplete]);
+
   // Show warning toast if no prizes configured or no tickets booked
   useEffect(() => {
-    if (currentGame && !isGameComplete) {
+    if (currentGame && !isGameComplete && !allPrizesWon) {
       if (!hasActivePrizes) {
         setToastMessage('No active prizes configured. Prize detection is disabled.');
         setToastType('warning');
@@ -120,7 +129,7 @@ function PlayingPhaseView({
         setShowToast(true);
       }
     }
-  }, [currentGame, hasActivePrizes, hasBookedTickets, isGameComplete]);
+  }, [currentGame, hasActivePrizes, hasBookedTickets, isGameComplete, allPrizesWon]);
 
   // Check for new winners
   useEffect(() => {
@@ -153,13 +162,85 @@ function PlayingPhaseView({
     );
   }
 
+  // Determine if all enabled prizes have winners
+  const enabledPrizes = Object.entries(settings.prizes || {})
+    .filter(([_, isEnabled]) => isEnabled)
+    .map(([prizeType]) => prizeType as keyof Game.Winners);
+
+  const enabledPrizesCount = enabledPrizes.length;
+  const wonPrizesCount = enabledPrizes.filter(prize => 
+    winners[prize] && winners[prize].length > 0
+  ).length;
+
+  const allEnabledPrizesWon = enabledPrizesCount > 0 && wonPrizesCount === enabledPrizesCount;
+
   // Determine game status based on gameState
   const gameStatus = gameState?.status === 'active' || gameState?.status === 'paused' 
     ? gameState.status 
     : 'paused';
 
+  // Render game completed view for either isGameComplete or allPrizesWon
+  if (isGameComplete || allPrizesWon) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <div className="bg-green-100 p-3 rounded-full">
+              <Check className="h-8 w-8 text-green-600" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900">
+            {allPrizesWon ? 'All Prizes Won!' : 'Game Complete!'}
+          </h2>
+          <p className="mt-2 text-gray-600">
+            {allPrizesWon 
+              ? `The game has ended because all ${enabledPrizesCount} enabled prizes have been claimed.`
+              : 'Here are the final results of the game.'}
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <WinnerDisplay
+              winners={winners}
+              tickets={activeTickets.tickets}
+              bookings={activeTickets.bookings}
+              prizes={settings.prizes}
+              showAllPrizes={true}
+            />
+          </div>
+
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <Trophy className="h-5 w-5 text-blue-400" />
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-blue-800">Game Summary</h3>
+                <div className="mt-2 text-sm text-blue-700 space-y-1">
+                  <p>Numbers called: {numberSystem.calledNumbers?.length || 0} of 90</p>
+                  <p>Prizes claimed: {wonPrizesCount} of {enabledPrizesCount}</p>
+                  <p>Total tickets in play: {Object.keys(activeTickets.bookings || {}).length}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-center pt-6">
+            <button
+              onClick={onStartNewGame}
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              Start New Game
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Error Display */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
@@ -181,7 +262,7 @@ function PlayingPhaseView({
       )}
 
       {/* Prize Configuration Warning */}
-      {!isGameComplete && !hasActivePrizes && (
+      {!hasActivePrizes && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -198,7 +279,7 @@ function PlayingPhaseView({
       )}
 
       {/* Ticket Booking Warning */}
-      {!isGameComplete && hasActivePrizes && !hasBookedTickets && (
+      {hasActivePrizes && !hasBookedTickets && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -214,153 +295,119 @@ function PlayingPhaseView({
         </div>
       )}
 
-      {/* All Prizes Won Alert */}
-      {allPrizesWon && !isGameComplete && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
+      {/* Prize Progress Status */}
+      {hasActivePrizes && hasBookedTickets && (
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-blue-700">
           <div className="flex">
             <div className="flex-shrink-0">
-              <Award className="h-5 w-5 text-yellow-400" />
+              <Award className="h-5 w-5 text-blue-400" />
             </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800">All active prizes have been won!</h3>
-              <div className="mt-2 text-sm text-yellow-700">
-                <p>All active prizes in this game have been awarded. Number generation has been disabled. Please end the game to proceed.</p>
-              </div>
-              <div className="mt-4">
-                <button
-                  onClick={onGameEnd}
-                  className="px-4 py-2 rounded-md text-sm font-medium bg-yellow-800 text-white hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
-                >
-                  End Game
-                </button>
+            <div className="ml-3 flex-1">
+              <h3 className="text-sm font-medium text-blue-800">Prize Progress</h3>
+              <div className="mt-2 text-sm text-blue-700">
+                <p>{wonPrizesCount} of {enabledPrizesCount} prizes have been claimed</p>
+                <div className="mt-2 w-full bg-blue-200 rounded-full h-2.5">
+                  <div 
+                    className="bg-blue-600 h-2.5 rounded-full" 
+                    style={{ width: `${(wonPrizesCount / enabledPrizesCount) * 100}%` }}
+                  ></div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {isGameComplete ? (
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Game Complete!</h2>
-            <p className="mt-2 text-gray-600">Here are the final results:</p>
-          </div>
+      {/* Game Controls */}
+      <GameControls
+        gameStatus={gameStatus}
+        soundEnabled={soundEnabled}
+        delaySeconds={callDelay}
+        onStatusChange={onStatusChange}
+        onSoundToggle={onSoundToggle}
+        onDelayChange={onDelayChange}
+        onGameEnd={onGameEnd}
+        disableControls={isGameComplete || allPrizesWon}
+      />
 
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <WinnerDisplay
-                winners={winners}
-                tickets={activeTickets.tickets}
-                bookings={activeTickets.bookings}
-                prizes={settings.prizes}
-                showAllPrizes={true}
-              />
-            </div>
-
-            <div className="flex justify-center pt-6">
-              <button
-                onClick={onStartNewGame}
-                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              >
-                Start New Game
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4 sm:space-y-6">
-          {/* Game Controls */}
-          <GameControls
-            gameStatus={gameStatus}
-            soundEnabled={soundEnabled}
-            delaySeconds={callDelay}
-            onStatusChange={onStatusChange}
-            onSoundToggle={onSoundToggle}
-            onDelayChange={onDelayChange}
-            onGameEnd={onGameEnd}
-            disableControls={isGameComplete || allPrizesWon}
-          />
-
-          {/* Current Number Display */}
-          {numberSystem.currentNumber && (
-            <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
-              <div className="text-center">
-                <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">Current Number</h3>
-                <div className="flex items-center justify-center">
-                  <div className="bg-yellow-500 text-white text-3xl sm:text-4xl font-bold rounded-full w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center shadow-lg">
-                    {numberSystem.currentNumber}
-                  </div>
-                </div>
-                <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
-                  {gameStatus === 'active' 
-                    ? `Next number in ~${callDelay} seconds`
-                    : `Game paused. Press Start to resume.`}
-                </p>
+      {/* Current Number Display */}
+      {numberSystem.currentNumber && (
+        <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
+          <div className="text-center">
+            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">Current Number</h3>
+            <div className="flex items-center justify-center">
+              <div className="bg-yellow-500 text-white text-3xl sm:text-4xl font-bold rounded-full w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center shadow-lg">
+                {numberSystem.currentNumber}
               </div>
             </div>
-          )}
+            <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
+              {gameStatus === 'active' 
+                ? `Next number in ~${callDelay} seconds`
+                : `Game paused. Press Start to resume.`}
+            </p>
+          </div>
+        </div>
+      )}
 
-          {/* Number Board */}
-          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
-            <NumberBoard
-              calledNumbers={numberSystem.calledNumbers || []}
-              queue={numberSystem.queue || []}
-              currentNumber={numberSystem.currentNumber}
-              isProcessing={isProcessing}
-              isGameComplete={isGameComplete}
-              allPrizesWon={allPrizesWon}
-            />
+      {/* Number Board */}
+      <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
+        <NumberBoard
+          calledNumbers={numberSystem.calledNumbers || []}
+          queue={numberSystem.queue || []}
+          currentNumber={numberSystem.currentNumber}
+          isProcessing={isProcessing}
+          isGameComplete={isGameComplete}
+          allPrizesWon={allPrizesWon}
+        />
+      </div>
+      
+      {/* Game Progress Card */}
+      <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
+        <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2 sm:mb-4">Game Progress</h3>
+        <div className="grid grid-cols-2 gap-2 sm:gap-4">
+          <div className="p-2 sm:p-3 border rounded-lg bg-gray-50">
+            <div className="text-xs sm:text-sm text-gray-500">Progress</div>
+            <div className="mt-1 flex items-center">
+              <div className="flex-1 bg-gray-200 rounded-full h-1.5 sm:h-2.5 mr-1 sm:mr-2">
+                <div 
+                  className="bg-blue-600 h-1.5 sm:h-2.5 rounded-full"
+                  style={{ width: `${gameStats.gameProgress}%` }}
+                ></div>
+              </div>
+              <span className="text-xs sm:text-sm font-medium text-gray-700">
+                {gameStats.gameProgress}%
+              </span>
+            </div>
           </div>
           
-          {/* Game Progress Card */}
-          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
-            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2 sm:mb-4">Game Progress</h3>
-            <div className="grid grid-cols-2 gap-2 sm:gap-4">
-              <div className="p-2 sm:p-3 border rounded-lg bg-gray-50">
-                <div className="text-xs sm:text-sm text-gray-500">Progress</div>
-                <div className="mt-1 flex items-center">
-                  <div className="flex-1 bg-gray-200 rounded-full h-1.5 sm:h-2.5 mr-1 sm:mr-2">
-                    <div 
-                      className="bg-blue-600 h-1.5 sm:h-2.5 rounded-full"
-                      style={{ width: `${gameStats.gameProgress}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-xs sm:text-sm font-medium text-gray-700">
-                    {gameStats.gameProgress}%
-                  </span>
-                </div>
-              </div>
-              
-              <div className="p-2 sm:p-3 border rounded-lg bg-gray-50">
-                <div className="text-xs sm:text-sm text-gray-500">Numbers Left</div>
-                <div className="text-base sm:text-lg font-semibold text-gray-700">{gameStats.numbersLeft}</div>
-              </div>
-              
-              <div className="p-2 sm:p-3 border rounded-lg bg-gray-50">
-                <div className="text-xs sm:text-sm text-gray-500">Active Tickets</div>
-                <div className="text-base sm:text-lg font-semibold text-gray-700">{gameStats.ticketCount}</div>
-              </div>
-              
-              <div className="p-2 sm:p-3 border rounded-lg bg-gray-50">
-                <div className="text-xs sm:text-sm text-gray-500">Avg. Time/Number</div>
-                <div className="text-base sm:text-lg font-semibold text-gray-700">{gameStats.averageSpeed}s</div>
-              </div>
-            </div>
+          <div className="p-2 sm:p-3 border rounded-lg bg-gray-50">
+            <div className="text-xs sm:text-sm text-gray-500">Numbers Left</div>
+            <div className="text-base sm:text-lg font-semibold text-gray-700">{gameStats.numbersLeft}</div>
           </div>
-
-          {/* Winners Display */}
-          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-6">
-            <WinnerDisplay
-              winners={winners}
-              tickets={activeTickets.tickets}
-              bookings={activeTickets.bookings}
-              prizes={settings.prizes}
-              showAllPrizes={false}
-              onWinnerNotification={handleWinnerNotification}
-            />
+          
+          <div className="p-2 sm:p-3 border rounded-lg bg-gray-50">
+            <div className="text-xs sm:text-sm text-gray-500">Active Tickets</div>
+            <div className="text-base sm:text-lg font-semibold text-gray-700">{gameStats.ticketCount}</div>
+          </div>
+          
+          <div className="p-2 sm:p-3 border rounded-lg bg-gray-50">
+            <div className="text-xs sm:text-sm text-gray-500">Avg. Time/Number</div>
+            <div className="text-base sm:text-lg font-semibold text-gray-700">{gameStats.averageSpeed}s</div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Winners Display */}
+      <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-6">
+        <WinnerDisplay
+          winners={winners}
+          tickets={activeTickets.tickets}
+          bookings={activeTickets.bookings}
+          prizes={settings.prizes}
+          showAllPrizes={false}
+          onWinnerNotification={handleWinnerNotification}
+        />
+      </div>
 
       {/* Game Statistics */}
       <div className="mt-8 bg-white rounded-lg shadow-sm border p-6">
@@ -381,7 +428,7 @@ function PlayingPhaseView({
           <div>
             <h4 className="text-sm font-medium text-gray-500">Prizes Claimed</h4>
             <p className="mt-2 text-3xl font-semibold text-gray-900">
-              {Object.values(winners || {}).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0)}
+              {wonPrizesCount}/{enabledPrizesCount}
             </p>
           </div>
         </div>
