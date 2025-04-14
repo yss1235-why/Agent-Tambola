@@ -15,6 +15,11 @@ import SessionHistory from './components/History/SessionHistory';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
 import appConfig from './config/appConfig';
 
+// Define the default props for PlayingPhase to satisfy TypeScript
+const defaultPlayingPhaseProps = {
+  // These will be replaced by properties from GameProvider
+};
+
 // Protected route component that checks for authentication
 const ProtectedRoute: React.FC<{ element: React.ReactNode }> = ({ element }) => {
   const { currentUser, isLoading } = useAuth();
@@ -92,7 +97,7 @@ const App: React.FC = () => {
                 element={
                   <ProtectedRoute 
                     element={
-                      <GameRoutes element={<PlayingPhase />} />
+                      <GameRoutes element={<PlayingPhase {...defaultPlayingPhaseProps} />} />
                     } 
                   />
                 } 
