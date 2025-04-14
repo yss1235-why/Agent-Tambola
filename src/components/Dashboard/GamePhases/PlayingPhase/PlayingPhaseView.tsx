@@ -6,6 +6,29 @@ import NumberBoard from './components/NumberBoard';
 import WinnerDisplay from './components/WinnerDisplay';
 import { Game } from '../../../../types/game';
 
+// Default prizes configuration
+const DEFAULT_PRIZES: Game.Settings['prizes'] = {
+  quickFive: false,
+  topLine: false,
+  middleLine: false,
+  bottomLine: false,
+  corners: false,
+  starCorners: false,
+  halfSheet: false,
+  fullSheet: false,
+  fullHouse: false,
+  secondFullHouse: false,
+};
+
+// Default complete settings
+const DEFAULT_SETTINGS: Game.Settings = {
+  maxTickets: 0,
+  selectedTicketSet: 1,
+  callDelay: 5,
+  hostPhone: '',
+  prizes: DEFAULT_PRIZES
+};
+
 interface PlayingPhaseViewProps {
   currentGame: Game.CurrentGame | null;
   winners: Game.GameState['winners'];
@@ -52,17 +75,22 @@ function PlayingPhaseView({
     averageSpeed: 0 
   });
 
+  // Safely extract values from currentGame with fallbacks
+  const activeTickets = currentGame?.activeTickets || { tickets: {}, bookings: {} };
+  const settings = currentGame?.settings || DEFAULT_SETTINGS;
+  const gameState = currentGame?.gameState || { status: 'paused' };
+  const numberSystem = currentGame?.numberSystem || { callDelay: 5, calledNumbers: [], queue: [], currentNumber: null };
+  
   // Check for active prize configuration
-  const hasActivePrizes = currentGame && Object.values(currentGame.settings.prizes).some(isActive => isActive);
-  const hasBookedTickets = currentGame && Object.keys(currentGame.activeTickets.bookings || {}).length > 0;
+  const hasActivePrizes = settings?.prizes ? Object.values(settings.prizes).some(isActive => isActive) : false;
+  const hasBookedTickets = Object.keys(activeTickets?.bookings || {}).length > 0;
 
   useEffect(() => {
     // Calculate game statistics
     if (currentGame) {
-      const { numberSystem, activeTickets } = currentGame;
-      const calledCount = numberSystem.calledNumbers?.length || 0;
+      const calledCount = numberSystem?.calledNumbers?.length || 0;
       const totalNumbers = 90; // Standard tambola has 90 numbers
-      const ticketCount = Object.keys(activeTickets.bookings || {}).length;
+      const ticketCount = Object.keys(activeTickets?.bookings || {}).length;
       
       // Calculate average speed (seconds per number call)
       const startTime = currentGame.startTime || Date.now();
@@ -77,7 +105,7 @@ function PlayingPhaseView({
         averageSpeed: parseFloat(averageSpeed)
       });
     }
-  }, [currentGame]);
+  }, [currentGame, numberSystem, activeTickets]);
 
   // Show warning toast if no prizes configured or no tickets booked
   useEffect(() => {
@@ -99,7 +127,7 @@ function PlayingPhaseView({
     if (!winners) return;
     
     // Count total winners across all prize types
-    const currentWinnerCount = Object.values(winners).reduce((acc, arr) => acc + arr.length, 0);
+    const currentWinnerCount = Object.values(winners).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0);
     
     if (currentWinnerCount > lastWinnerCount && lastWinnerCount > 0) {
       // New winner detected!
@@ -125,10 +153,8 @@ function PlayingPhaseView({
     );
   }
 
-  const { gameState, numberSystem, activeTickets, settings } = currentGame;
-  
   // Determine game status based on gameState
-  const gameStatus = gameState.status === 'active' || gameState.status === 'paused' 
+  const gameStatus = gameState?.status === 'active' || gameState?.status === 'paused' 
     ? gameState.status 
     : 'paused';
 
@@ -255,7 +281,7 @@ function PlayingPhaseView({
             disableControls={isGameComplete || allPrizesWon}
           />
 
-          {/* Current Number Display - Visible at the top for mobile */}
+          {/* Current Number Display */}
           {numberSystem.currentNumber && (
             <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
               <div className="text-center">
@@ -277,8 +303,8 @@ function PlayingPhaseView({
           {/* Number Board */}
           <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
             <NumberBoard
-              calledNumbers={numberSystem.calledNumbers}
-              queue={numberSystem.queue}
+              calledNumbers={numberSystem.calledNumbers || []}
+              queue={numberSystem.queue || []}
               currentNumber={numberSystem.currentNumber}
               isProcessing={isProcessing}
               isGameComplete={isGameComplete}
@@ -286,7 +312,7 @@ function PlayingPhaseView({
             />
           </div>
           
-          {/* Game Progress Card - Simplified for mobile */}
+          {/* Game Progress Card */}
           <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
             <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2 sm:mb-4">Game Progress</h3>
             <div className="grid grid-cols-2 gap-2 sm:gap-4">
@@ -349,13 +375,13 @@ function PlayingPhaseView({
             <h4 className="text-sm font-medium text-gray-500">Active Tickets</h4>
             <p className="mt-2 text-3xl font-semibold text-gray-900">
               {Object.keys(activeTickets.bookings || {}).length}/
-              {settings.maxTickets}
+              {settings.maxTickets || 0}
             </p>
           </div>
           <div>
             <h4 className="text-sm font-medium text-gray-500">Prizes Claimed</h4>
             <p className="mt-2 text-3xl font-semibold text-gray-900">
-              {Object.values(winners || {}).flat().length}
+              {Object.values(winners || {}).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0)}
             </p>
           </div>
         </div>
