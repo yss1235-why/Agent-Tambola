@@ -11,6 +11,7 @@ import BookingForm from './components/BookingForm';
 import BookingsList from './components/BookingsList';
 import { Game, GAME_PHASES, GAME_STATUSES } from '../../../../types/game';
 import { handleApiError } from '@utils/errorHandler';
+import { BookingManager } from '../../../../services'; // Added correct import for BookingManager
 
 interface TicketBookingData {
   name: string;
