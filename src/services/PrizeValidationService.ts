@@ -314,7 +314,7 @@ export class PrizeValidationService {
           console.log("************************");
           
         } else if (prizeType === 'halfSheet') {
-          // IMPROVED Half sheet validation logic with better error handling and debugging
+          // MODIFIED Half sheet validation logic to handle tickets with identical positions
           console.log("************************");
           console.log("HALF SHEET VALIDATION START");
           console.log("************************");
@@ -323,15 +323,15 @@ export class PrizeValidationService {
           console.log(`First few called numbers: ${calledNumbers.slice(0, 5).join(', ')}...`);
           
           try {
-            // We need to group tickets by sheetNumber and position (3 tickets per half sheet)
-            const halfSheetGroups = new Map<string, { tickets: Game.Ticket[], positions: number[] }>();
+            // Group tickets by sheet number only (ignore position)
+            const sheetTicketsMap = new Map<number, Game.Ticket[]>();
             const invalidTickets: string[] = [];
             
             // Log total tickets count before filtering
             console.log(`Total tickets being processed: ${Object.keys(tickets).length}`);
-            console.log("Grouping tickets into half sheets based on sheet number and position...");
+            console.log("Grouping tickets by sheet number only (ignoring position)...");
             
-            // Group tickets by half sheet with additional validation
+            // Group tickets by sheet number
             Object.values(tickets).forEach(ticket => {
               // Verify ticket has required properties
               if (!ticket.id) {
@@ -345,208 +345,205 @@ export class PrizeValidationService {
                 return;
               }
               
-              if (ticket.position === undefined || ticket.position === null) {
-                console.log(`Warning: Ticket ${ticket.id} has no position property`);
-                invalidTickets.push(ticket.id);
-                return;
-              }
-              
-              console.log(`Processing ticket ${ticket.id}: sheet=${ticket.sheetNumber}, position=${ticket.position}`);
+              console.log(`Processing ticket ${ticket.id}: sheet=${ticket.sheetNumber}`);
               
               const sheetNum = ticket.sheetNumber;
-              const position = ticket.position;
               
-              // First half: positions 1-3, Second half: positions 4-6
-              // Make sure position is treated as a number
-              const positionNum = typeof position === 'string' ? parseInt(position, 10) : position;
-              
-              if (isNaN(positionNum)) {
-                console.log(`Warning: Ticket ${ticket.id} has invalid position: ${position}`);
-                invalidTickets.push(ticket.id);
-                return;
+              if (!sheetTicketsMap.has(sheetNum)) {
+                sheetTicketsMap.set(sheetNum, []);
+                console.log(`Created new sheet group for sheet ${sheetNum}`);
               }
               
-              const halfIndex = positionNum <= 3 ? 0 : 1;
-              const groupKey = `${sheetNum}_${halfIndex}`;
-              console.log(`Ticket ${ticket.id} assigned to half-sheet group ${groupKey}`);
-              
-              if (!halfSheetGroups.has(groupKey)) {
-                halfSheetGroups.set(groupKey, { tickets: [], positions: [] });
-                console.log(`Created new half-sheet group for ${groupKey}`);
-              }
-              
-              const group = halfSheetGroups.get(groupKey);
-              if (group) {
-                group.tickets.push(ticket);
-                group.positions.push(positionNum);
-                console.log(`Added ticket ${ticket.id} to half-sheet group ${groupKey} (position ${positionNum})`);
-              }
+              sheetTicketsMap.get(sheetNum)?.push(ticket);
+              console.log(`Added ticket ${ticket.id} to sheet group ${sheetNum}`);
             });
             
             if (invalidTickets.length > 0) {
               console.log(`Found ${invalidTickets.length} invalid tickets: ${invalidTickets.join(', ')}`);
             }
             
-            // Log all available half sheet groups
-            console.log(`Found ${halfSheetGroups.size} half sheet groups to validate`);
-            halfSheetGroups.forEach((group, groupKey) => {
-              console.log(`Half Sheet ${groupKey}: Contains ${group.tickets.length} tickets`);
-              console.log(`- Ticket IDs: ${group.tickets.map(t => t.id).join(', ')}`);
-              console.log(`- Positions: ${group.positions.sort((a, b) => a - b).join(', ')}`);
+            // Log all available sheet groups
+            console.log(`Found ${sheetTicketsMap.size} sheet groups`);
+            sheetTicketsMap.forEach((ticketsInSheet, sheetNum) => {
+              console.log(`Sheet ${sheetNum}: Contains ${ticketsInSheet.length} tickets`);
+              console.log(`- Ticket IDs: ${ticketsInSheet.map(t => t.id).join(', ')}`);
             });
             
-            // Process each half sheet
+            // Process each sheet and divide into half-sheets of 3 tickets each
             let foundValidHalfSheet = false;
-            console.log("Beginning validation of individual half-sheets...");
+            console.log("Beginning validation of half-sheets by arbitrary division...");
             
-            for (const [groupKey, group] of halfSheetGroups) {
-              const ticketsInGroup = group.tickets;
-              const positions = group.positions;
+            for (const [sheetNum, ticketsInSheet] of sheetTicketsMap) {
+              console.log(`\n[VALIDATING] Sheet ${sheetNum} with ${ticketsInSheet.length} tickets for half-sheets`);
               
-              console.log(`\n[VALIDATING] Half Sheet ${groupKey} with ${ticketsInGroup.length} tickets`);
-              
-              // Skip if not exactly 3 tickets
-              if (ticketsInGroup.length !== 3) {
-                console.log(`Half Sheet ${groupKey}: INVALID - Has ${ticketsInGroup.length} tickets, not 3`);
+              // We need at least 3 tickets to form a half-sheet
+              if (ticketsInSheet.length < 3) {
+                console.log(`Sheet ${sheetNum}: INVALID - Has only ${ticketsInSheet.length} tickets, need at least 3 for a half-sheet`);
                 continue;
               }
               
-              console.log(`Half Sheet ${groupKey}: Validating - Has exactly 3 tickets ✓`);
+              // If more than 3 tickets, we'll create potential half-sheets in groups of 3
+              // We'll try all possible combinations of 3 tickets
+              const halfSheetCombinations: Game.Ticket[][] = [];
               
-              // Check positions are consecutive and in the correct half
-              const [halfSheetIndex] = groupKey.split('_').map(n => parseInt(n, 10)).slice(-1);
-              const expectedPositionRange = halfSheetIndex === 0 ? [1, 2, 3] : [4, 5, 6];
-              const sortedPositions = [...positions].sort((a, b) => a - b);
-              
-              console.log(`Half Sheet ${groupKey}: Expected position range: ${expectedPositionRange.join(', ')}`);
-              console.log(`Half Sheet ${groupKey}: Actual positions: ${sortedPositions.join(', ')}`);
-              
-              // Check if positions match the expected range
-              const hasValidPositions = sortedPositions.every(pos => 
-                expectedPositionRange.includes(pos)
-              );
-              
-              if (!hasValidPositions) {
-                console.log(`Half Sheet ${groupKey}: INVALID - Positions ${sortedPositions.join(', ')} don't match expected range ${expectedPositionRange.join(', ')}`);
-                continue;
-              }
-              
-              console.log(`Half Sheet ${groupKey}: Positions valid: ${sortedPositions.join(', ')} ✓`);
-              
-              // Get ticket IDs
-              const ticketIds = ticketsInGroup.map(t => t.id);
-              console.log(`Half Sheet ${groupKey}: Ticket IDs: ${ticketIds.join(', ')}`);
-              
-              // Check if all tickets are booked
-              console.log(`Half Sheet ${groupKey}: Checking if all tickets are booked...`);
-              const bookedTickets = ticketIds.filter(id => bookings[id]);
-              if (bookedTickets.length !== 3) {
-                console.log(`Half Sheet ${groupKey}: INVALID - Only ${bookedTickets.length}/3 tickets are booked`);
-                console.log(`- Booked tickets: ${bookedTickets.join(', ')}`);
-                console.log(`- Missing bookings for: ${ticketIds.filter(id => !bookings[id]).join(', ')}`);
-                continue;
-              }
-              
-              console.log(`Half Sheet ${groupKey}: All 3 tickets are booked ✓`);
-              
-              // Check if booked by the same player with more detailed logging
-              console.log(`Half Sheet ${groupKey}: Checking if all tickets are booked by the same player...`);
-              const bookingPlayers = new Map<string, string[]>();
-              let hasInvalidBooking = false;
-              
-              for (const ticketId of ticketIds) {
-                const booking = bookings[ticketId];
-                if (!booking || !booking.playerName) {
-                  hasInvalidBooking = true;
-                  console.log(`Half Sheet ${groupKey}: INVALID - Ticket ${ticketId} has no valid booking`);
-                  break;
-                }
+              if (ticketsInSheet.length === 3) {
+                // Exact match, just one combination
+                halfSheetCombinations.push([...ticketsInSheet]);
+                console.log(`Sheet ${sheetNum}: Exactly 3 tickets, creating one half-sheet group`);
+              } else if (ticketsInSheet.length === 6) {
+                // Perfect for two half-sheets (first 3 and last 3)
+                const firstHalf = ticketsInSheet.slice(0, 3);
+                const secondHalf = ticketsInSheet.slice(3, 6);
                 
-                const playerName = booking.playerName;
-                console.log(`Half Sheet ${groupKey}: Ticket ${ticketId} booked by ${playerName}`);
+                halfSheetCombinations.push(firstHalf);
+                halfSheetCombinations.push(secondHalf);
                 
-                if (!bookingPlayers.has(playerName)) {
-                  bookingPlayers.set(playerName, []);
-                }
-                bookingPlayers.get(playerName)?.push(ticketId);
-              }
-              
-              if (hasInvalidBooking) {
-                console.log(`Half Sheet ${groupKey}: Has invalid bookings, skipping further validation`);
-                continue;
-              }
-              
-              if (bookingPlayers.size !== 1) {
-                console.log(`Half Sheet ${groupKey}: INVALID - Tickets booked by ${bookingPlayers.size} different players`);
-                bookingPlayers.forEach((ticketIds, playerName) => {
-                  console.log(`- Player "${playerName}" has tickets: ${ticketIds.join(', ')}`);
-                });
-                continue;
-              }
-              
-              const playerName = [...bookingPlayers.keys()][0];
-              console.log(`Half Sheet ${groupKey}: All tickets booked by same player: "${playerName}" ✓`);
-              
-              // Check AT LEAST one number called per ticket (more lenient than fullSheet)
-              console.log(`Half Sheet ${groupKey}: Checking called numbers per ticket...`);
-              console.log(`For half sheet validation, we require at least 1 number called per ticket`);
-              
-              let allTicketsHaveAtLeastOneNumber = true;
-              const ticketResults: {id: string, calledCount: number, calledNumbers: number[]}[] = [];
-              
-              for (const ticket of ticketsInGroup) {
-                // Get all non-zero numbers on this ticket
-                const allTicketNumbers = ticket.numbers.flat().filter(n => n !== 0);
-                console.log(`Ticket ${ticket.id} has ${allTicketNumbers.length} numbers: [${allTicketNumbers.join(', ')}]`);
-                
-                // Find which ones have been called
-                const ticketCalledNumbers = allTicketNumbers.filter(n => calledNumbers.includes(n));
-                
-                ticketResults.push({
-                  id: ticket.id,
-                  calledCount: ticketCalledNumbers.length,
-                  calledNumbers: ticketCalledNumbers
-                });
-                
-                // Check if at least one number is called
-                if (ticketCalledNumbers.length < 1) {
-                  allTicketsHaveAtLeastOneNumber = false;
-                  console.log(`Half Sheet ${groupKey}: Ticket ${ticket.id} has NO called numbers - NEEDS AT LEAST 1`);
-                } else {
-                  console.log(`Half Sheet ${groupKey}: Ticket ${ticket.id} has ${ticketCalledNumbers.length} called numbers ✓`);
-                }
-              }
-              
-              // Log detailed results for each ticket
-              console.log(`Half Sheet ${groupKey}: Detailed results per ticket:`);
-              ticketResults.forEach(result => {
-                console.log(`- Ticket ${result.id}: ${result.calledCount} number(s) called [${result.calledNumbers.join(', ')}]`);
-              });
-              
-              console.log(`Half Sheet ${groupKey}: At least one number per ticket requirement met: ${allTicketsHaveAtLeastOneNumber}`);
-              
-              // Also check more strict requirement for additional logging
-              const allTicketsHaveAtLeastTwoNumbers = ticketResults.every(r => r.calledCount >= 2);
-              console.log(`Half Sheet ${groupKey}: At least two numbers per ticket: ${allTicketsHaveAtLeastTwoNumbers} (not required for half sheet)`);
-              
-              // If valid, mark as a winner - USING THE MORE LENIENT REQUIREMENT
-              if (allTicketsHaveAtLeastOneNumber) {
-                console.log(`*** HALF SHEET WIN FOUND! - Group ${groupKey} - Player: ${playerName} ***`);
-                console.log(`Winning half-sheet details:`);
-                console.log(`- Half-sheet ID: ${groupKey}`);
-                console.log(`- Player: ${playerName}`);
-                console.log(`- Ticket IDs: ${ticketIds.join(', ')}`);
-                console.log(`- Total called numbers found: ${ticketResults.reduce((sum, t) => sum + t.calledCount, 0)}`);
-                
-                results[prizeType].winners = ticketIds;
-                results[prizeType].isValid = true;
-                newWinners[prizeType] = [...(currentWinners[prizeType] || []), ...ticketIds];
-                hasNewWinners = true;
-                foundValidHalfSheet = true;
-                break;
+                console.log(`Sheet ${sheetNum}: 6 tickets, creating two half-sheet groups of 3 tickets each`);
+                console.log(`- First half: ${firstHalf.map(t => t.id).join(', ')}`);
+                console.log(`- Second half: ${secondHalf.map(t => t.id).join(', ')}`);
               } else {
-                console.log(`Half Sheet ${groupKey}: INVALID - Does not meet minimum called numbers requirement`);
+                // For other numbers, we'll generate combinations of 3
+                console.log(`Sheet ${sheetNum}: ${ticketsInSheet.length} tickets, generating all possible combinations of 3`);
+                
+                // Use a simple algorithm to generate combinations of 3 tickets
+                for (let i = 0; i < ticketsInSheet.length - 2; i++) {
+                  for (let j = i + 1; j < ticketsInSheet.length - 1; j++) {
+                    for (let k = j + 1; k < ticketsInSheet.length; k++) {
+                      const combination = [ticketsInSheet[i], ticketsInSheet[j], ticketsInSheet[k]];
+                      halfSheetCombinations.push(combination);
+                    }
+                  }
+                }
+                
+                console.log(`Generated ${halfSheetCombinations.length} possible combinations of 3 tickets`);
               }
+              
+              // Now validate each potential half-sheet
+              console.log(`Validating ${halfSheetCombinations.length} potential half-sheets for sheet ${sheetNum}...`);
+              
+              let combinationIndex = 0;
+              for (const halfSheetTickets of halfSheetCombinations) {
+                combinationIndex++;
+                console.log(`\n[VALIDATING] Half-sheet combination ${combinationIndex}/${halfSheetCombinations.length} for sheet ${sheetNum}`);
+                
+                // Get ticket IDs
+                const ticketIds = halfSheetTickets.map(t => t.id);
+                console.log(`Half-sheet tickets: ${ticketIds.join(', ')}`);
+                
+                // Check if all tickets are booked
+                console.log(`Checking if all tickets are booked...`);
+                const bookedTickets = ticketIds.filter(id => bookings[id]);
+                if (bookedTickets.length !== 3) {
+                  console.log(`INVALID - Only ${bookedTickets.length}/3 tickets are booked`);
+                  console.log(`- Booked tickets: ${bookedTickets.join(', ')}`);
+                  console.log(`- Missing bookings for: ${ticketIds.filter(id => !bookings[id]).join(', ')}`);
+                  continue;
+                }
+                
+                console.log(`All 3 tickets are booked ✓`);
+                
+                // Check if booked by the same player
+                console.log(`Checking if all tickets are booked by the same player...`);
+                const bookingPlayers = new Map<string, string[]>();
+                let hasInvalidBooking = false;
+                
+                for (const ticketId of ticketIds) {
+                  const booking = bookings[ticketId];
+                  if (!booking || !booking.playerName) {
+                    hasInvalidBooking = true;
+                    console.log(`INVALID - Ticket ${ticketId} has no valid booking`);
+                    break;
+                  }
+                  
+                  const playerName = booking.playerName;
+                  console.log(`Ticket ${ticketId} booked by ${playerName}`);
+                  
+                  if (!bookingPlayers.has(playerName)) {
+                    bookingPlayers.set(playerName, []);
+                  }
+                  bookingPlayers.get(playerName)?.push(ticketId);
+                }
+                
+                if (hasInvalidBooking) {
+                  console.log(`Has invalid bookings, skipping further validation`);
+                  continue;
+                }
+                
+                if (bookingPlayers.size !== 1) {
+                  console.log(`INVALID - Tickets booked by ${bookingPlayers.size} different players`);
+                  bookingPlayers.forEach((ticketIds, playerName) => {
+                    console.log(`- Player "${playerName}" has tickets: ${ticketIds.join(', ')}`);
+                  });
+                  continue;
+                }
+                
+                const playerName = [...bookingPlayers.keys()][0];
+                console.log(`All tickets booked by same player: "${playerName}" ✓`);
+                
+                // Check AT LEAST one number called per ticket (more lenient than fullSheet)
+                console.log(`Checking called numbers per ticket...`);
+                console.log(`For half sheet validation, we require at least 1 number called per ticket`);
+                
+                let allTicketsHaveAtLeastOneNumber = true;
+                const ticketResults: {id: string, calledCount: number, calledNumbers: number[]}[] = [];
+                
+                for (const ticket of halfSheetTickets) {
+                  // Get all non-zero numbers on this ticket
+                  const allTicketNumbers = ticket.numbers.flat().filter(n => n !== 0);
+                  console.log(`Ticket ${ticket.id} has ${allTicketNumbers.length} numbers: [${allTicketNumbers.join(', ')}]`);
+                  
+                  // Find which ones have been called
+                  const ticketCalledNumbers = allTicketNumbers.filter(n => calledNumbers.includes(n));
+                  
+                  ticketResults.push({
+                    id: ticket.id,
+                    calledCount: ticketCalledNumbers.length,
+                    calledNumbers: ticketCalledNumbers
+                  });
+                  
+                  // Check if at least one number is called
+                  if (ticketCalledNumbers.length < 1) {
+                    allTicketsHaveAtLeastOneNumber = false;
+                    console.log(`Ticket ${ticket.id} has NO called numbers - NEEDS AT LEAST 1`);
+                  } else {
+                    console.log(`Ticket ${ticket.id} has ${ticketCalledNumbers.length} called numbers ✓`);
+                  }
+                }
+                
+                // Log detailed results for each ticket
+                console.log(`Detailed results per ticket:`);
+                ticketResults.forEach(result => {
+                  console.log(`- Ticket ${result.id}: ${result.calledCount} number(s) called [${result.calledNumbers.join(', ')}]`);
+                });
+                
+                console.log(`At least one number per ticket requirement met: ${allTicketsHaveAtLeastOneNumber}`);
+                
+                // Also check more strict requirement for additional logging
+                const allTicketsHaveAtLeastTwoNumbers = ticketResults.every(r => r.calledCount >= 2);
+                console.log(`At least two numbers per ticket: ${allTicketsHaveAtLeastTwoNumbers} (not required for half sheet)`);
+                
+                // If valid, mark as a winner - USING THE MORE LENIENT REQUIREMENT
+                if (allTicketsHaveAtLeastOneNumber) {
+                  console.log(`*** HALF SHEET WIN FOUND! - Sheet ${sheetNum} - Player: ${playerName} ***`);
+                  console.log(`Winning half-sheet details:`);
+                  console.log(`- Sheet number: ${sheetNum}`);
+                  console.log(`- Player: ${playerName}`);
+                  console.log(`- Ticket IDs: ${ticketIds.join(', ')}`);
+                  console.log(`- Total called numbers found: ${ticketResults.reduce((sum, t) => sum + t.calledCount, 0)}`);
+                  
+                  results[prizeType].winners = ticketIds;
+                  results[prizeType].isValid = true;
+                  newWinners[prizeType] = [...(currentWinners[prizeType] || []), ...ticketIds];
+                  hasNewWinners = true;
+                  foundValidHalfSheet = true;
+                  break;
+                } else {
+                  console.log(`INVALID - Does not meet minimum called numbers requirement`);
+                }
+              }
+              
+              // If we found a valid half sheet, no need to check other sheets
+              if (foundValidHalfSheet) break;
             }
             
             if (!foundValidHalfSheet) {
