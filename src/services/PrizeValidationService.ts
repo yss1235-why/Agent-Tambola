@@ -315,6 +315,7 @@ export class PrizeValidationService {
           
         } else if (prizeType === 'halfSheet') {
           // MODIFIED Half sheet validation logic to handle tickets with identical positions
+          // AND UPDATED to require at least 2 numbers called per ticket
           console.log("************************");
           console.log("HALF SHEET VALIDATION START");
           console.log("************************");
@@ -480,11 +481,11 @@ export class PrizeValidationService {
                 const playerName = [...bookingPlayers.keys()][0];
                 console.log(`All tickets booked by same player: "${playerName}" ✓`);
                 
-                // Check AT LEAST one number called per ticket (more lenient than fullSheet)
+                // UPDATED: Check AT LEAST TWO numbers called per ticket (changed from one)
                 console.log(`Checking called numbers per ticket...`);
-                console.log(`For half sheet validation, we require at least 1 number called per ticket`);
+                console.log(`For half sheet validation, we require at least 2 numbers called per ticket`);
                 
-                let allTicketsHaveAtLeastOneNumber = true;
+                let allTicketsHaveAtLeastTwoNumbers = true;
                 const ticketResults: {id: string, calledCount: number, calledNumbers: number[]}[] = [];
                 
                 for (const ticket of halfSheetTickets) {
@@ -501,10 +502,10 @@ export class PrizeValidationService {
                     calledNumbers: ticketCalledNumbers
                   });
                   
-                  // Check if at least one number is called
-                  if (ticketCalledNumbers.length < 1) {
-                    allTicketsHaveAtLeastOneNumber = false;
-                    console.log(`Ticket ${ticket.id} has NO called numbers - NEEDS AT LEAST 1`);
+                  // UPDATED: Check if at least TWO numbers are called (changed from one)
+                  if (ticketCalledNumbers.length < 2) {
+                    allTicketsHaveAtLeastTwoNumbers = false;
+                    console.log(`Ticket ${ticket.id} has only ${ticketCalledNumbers.length} called numbers - NEEDS AT LEAST 2`);
                   } else {
                     console.log(`Ticket ${ticket.id} has ${ticketCalledNumbers.length} called numbers ✓`);
                   }
@@ -516,14 +517,15 @@ export class PrizeValidationService {
                   console.log(`- Ticket ${result.id}: ${result.calledCount} number(s) called [${result.calledNumbers.join(', ')}]`);
                 });
                 
-                console.log(`At least one number per ticket requirement met: ${allTicketsHaveAtLeastOneNumber}`);
+                // UPDATED: Changed variable name and condition text to reflect new requirement
+                console.log(`At least two numbers per ticket requirement met: ${allTicketsHaveAtLeastTwoNumbers}`);
                 
-                // Also check more strict requirement for additional logging
-                const allTicketsHaveAtLeastTwoNumbers = ticketResults.every(r => r.calledCount >= 2);
-                console.log(`At least two numbers per ticket: ${allTicketsHaveAtLeastTwoNumbers} (not required for half sheet)`);
+                // For reference, check more lenient requirement for debugging
+                const allTicketsHaveAtLeastOneNumber = ticketResults.every(r => r.calledCount >= 1);
+                console.log(`At least one number per ticket: ${allTicketsHaveAtLeastOneNumber} (not used for validation)`);
                 
-                // If valid, mark as a winner - USING THE MORE LENIENT REQUIREMENT
-                if (allTicketsHaveAtLeastOneNumber) {
+                // UPDATED: If valid, mark as a winner - USING THE STRICTER REQUIREMENT
+                if (allTicketsHaveAtLeastTwoNumbers) {
                   console.log(`*** HALF SHEET WIN FOUND! - Sheet ${sheetNum} - Player: ${playerName} ***`);
                   console.log(`Winning half-sheet details:`);
                   console.log(`- Sheet number: ${sheetNum}`);
