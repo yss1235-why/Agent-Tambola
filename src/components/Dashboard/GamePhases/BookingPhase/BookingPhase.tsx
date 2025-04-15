@@ -145,6 +145,35 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
     }
   };
 
+  // Added this function to handle booking editing
+  const handleEditBooking = async (ticketId: string, data: { name: string; phone: string }) => {
+    if (!currentUser?.uid) {
+      setError('Unable to update booking at this time');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const bookingManager = BookingManager.getInstance();
+      bookingManager.initialize(currentUser.uid);
+      
+      await bookingManager.updateBooking(ticketId, {
+        playerName: data.name,
+        phoneNumber: data.phone
+      });
+      
+      setToastMessage('Booking updated successfully');
+      setShowToast(true);
+    } catch (err) {
+      console.error('Error updating booking:', err);
+      setError(handleApiError(err, 'Failed to update booking. Please try again.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleBackToSetup = async () => {
     if (!currentUser?.uid) return;
 
@@ -277,7 +306,7 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
 
           <BookingsList 
             bookings={gameData.activeTickets?.bookings || {}}
-            onEditBooking={async () => {}} // Implement if needed
+            onEditBooking={handleEditBooking} // Updated to use the handleEditBooking function
           />
 
           <div className="pt-6 border-t">
