@@ -133,11 +133,7 @@ export class PrizeValidationService {
           continue;
         }
 
-        // NEW CONDITION: For fullSheet, only check if halfSheet has been won
-        if (prizeType === 'fullSheet' && (!currentWinners?.halfSheet || currentWinners.halfSheet.length === 0)) {
-          console.log('Full Sheet requires Half Sheet to be won first, skipping');
-          continue;
-        }
+        // REMOVED HALF SHEET DEPENDENCY CHECK FOR FULL SHEET
 
         console.log(`Validating prize type: ${prizeType}`);
         
