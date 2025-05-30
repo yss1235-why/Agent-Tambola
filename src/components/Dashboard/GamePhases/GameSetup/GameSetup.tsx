@@ -1,9 +1,8 @@
-// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx
+// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - Updated
 import React, { useState, useEffect } from 'react';
-import { ref, update } from 'firebase/database';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { database } from '../../../../lib/firebase';
+import { GameDatabaseService } from '../../../../services/GameDatabaseService';
 import { LoadingSpinner, Toast } from '@components';
 import PrizeConfiguration from './components/PrizeConfiguration';
 import TicketSetSelector from './components/TicketSetSelector';
@@ -28,8 +27,9 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info');
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
 
+  const databaseService = GameDatabaseService.getInstance();
+
   useEffect(() => {
-    // Initialize with the current game settings
     if (currentGame?.settings) {
       setSettings(currentGame.settings);
     }
@@ -55,38 +55,32 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     setIsValidating(true);
     const errors: string[] = [];
     
-    // Check that at least one prize is enabled
     const hasPrizes = Object.values(settings.prizes).some(value => value === true);
     if (!hasPrizes) {
       errors.push('At least one prize type must be enabled');
     }
     
-    // Validate max tickets
     if (!settings.maxTickets || settings.maxTickets <= 0) {
       errors.push('Maximum tickets must be greater than 0');
     } else if (settings.maxTickets > 600) {
       errors.push('Maximum tickets cannot exceed 600');
     }
     
-    // Validate call delay
     if (!settings.callDelay || settings.callDelay < 3) {
       errors.push('Call delay must be at least 3 seconds');
     } else if (settings.callDelay > 10) {
       errors.push('Call delay cannot exceed 10 seconds');
     }
     
-    // Validate host phone number
     if (!settings.hostPhone) {
       errors.push('Host phone number is required');
     } else {
-      // Remove any non-digit characters except the leading +
       const digits = settings.hostPhone.replace(/(?!^\+)\D/g, '');
       const hasCountryCode = digits.startsWith('+');
       
-      // Check if it's a valid phone number with country code
       if (!hasCountryCode) {
         errors.push('Phone number must include country code (e.g., +91)');
-      } else if (digits.length < 12) { // +91 (3 chars) + 10 digits = 13 chars minimum
+      } else if (digits.length < 12) {
         errors.push('Phone number is too short (should be 10 digits after country code)');
       } else if (digits.length > 13) {
         errors.push('Phone number is too long (should be 10 digits after country code)');
@@ -102,7 +96,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
   const saveSettings = async () => {
     if (!currentUser?.uid) return;
     
-    // Validate settings before saving
     if (!validateSettings()) {
       setToastMessage('Please fix the validation errors before proceeding');
       setToastType('error');
@@ -113,22 +106,14 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     setIsSubmitting(true);
     
     try {
-      // Create update object for multiple paths
-      const updates: Record<string, any> = {};
-      
-      // Update settings in current game
-      updates[`hosts/${currentUser.uid}/currentGame/settings`] = settings;
-      
-      // Also save as default settings for future games
-      updates[`hosts/${currentUser.uid}/defaultSettings`] = settings;
-      
-      // Apply all updates atomically
-      await update(ref(database), updates);
+      await databaseService.updateGameSettings(currentUser.uid, settings);
+      await databaseService.saveDefaultSettings(currentUser.uid, settings);
       
       setToastMessage('Settings saved successfully and set as defaults');
       setToastType('success');
       setShowToast(true);
       setHasMadeChanges(false);
+      
     } catch (error) {
       console.error('Error saving settings:', error);
       setToastMessage('Failed to save settings. Please try again.');
@@ -142,7 +127,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
   const startBookingPhase = async () => {
     if (!currentUser?.uid) return;
     
-    // Validate settings before proceeding
     if (!validateSettings()) {
       setToastMessage('Please fix the validation errors before proceeding');
       setToastType('error');
@@ -155,30 +139,34 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     try {
       console.log('Starting booking phase. Loading ticket data...');
       
-      // Save current settings as defaults for future games
-      await update(ref(database, `hosts/${currentUser.uid}/defaultSettings`), settings);
+      await databaseService.saveDefaultSettings(currentUser.uid, settings);
       
-      // Load and process ticket data
       const ticketData = await loadTicketData(
         settings.selectedTicketSet,
         settings.maxTickets
       );
       
-      // Validate the processed ticket data
       if (!validateTicketData(ticketData)) {
         throw new Error('Invalid ticket data structure. Please check the ticket data files.');
       }
       
       console.log(`Ticket data loaded successfully. Creating ${settings.maxTickets} tickets...`);
       
-      // Initialize Firebase update object
-      const updates: Record<string, any> = {};
+      const tickets: Record<string, Game.Ticket> = {};
+      for (let i = 1; i <= settings.maxTickets; i++) {
+        const ticketId = i.toString();
+        const ticketNumbers = ticketData[ticketId] || [[], [], []];
+        
+        tickets[ticketId] = {
+          id: ticketId,
+          status: 'available',
+          sheetNumber: settings.selectedTicketSet,
+          position: Math.ceil(i / 6),
+          numbers: ticketNumbers
+        };
+      }
       
-      // Include settings
-      updates['settings'] = settings;
-      
-      // Create gameState object with fully initialized winners object
-      updates['gameState'] = {
+      const gameStateUpdates: Partial<Game.GameState> = {
         phase: GAME_PHASES.BOOKING,
         status: GAME_STATUSES.BOOKING,
         winners: {
@@ -194,50 +182,29 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
           secondFullHouse: []
         }
       };
-      
-      // Initialize active tickets with the loaded number data
-      const tickets: Record<string, Game.Ticket> = {};
-      for (let i = 1; i <= settings.maxTickets; i++) {
-        const ticketId = i.toString();
-        
-        // Get the processed numbers array for this ticket
-        const ticketNumbers = ticketData[ticketId] || [[], [], []];
-        
-        tickets[ticketId] = {
-          id: ticketId,
-          status: 'available',
-          sheetNumber: settings.selectedTicketSet,
-          position: Math.ceil(i / 6),
-          numbers: ticketNumbers
-        };
-      }
-      
-      // Set up active tickets
-      updates['activeTickets'] = {
-        tickets: tickets,
-        bookings: {}
-      };
-      
-      // Add timestamp and metrics
-      updates['bookingMetrics'] = {
-        startTime: Date.now(),
-        lastBookingTime: Date.now(),
-        totalBookings: 0,
-        totalPlayers: 0
-      };
-      
-      // Initialize numberSystem
-      updates['numberSystem'] = {
+
+      const numberSystemUpdates: Partial<Game.NumberSystem> = {
         callDelay: settings.callDelay || 5,
         currentNumber: null,
         calledNumbers: [],
         queue: []
       };
-      
+
+      const metricsData: Game.BookingMetrics = {
+        startTime: Date.now(),
+        lastBookingTime: Date.now(),
+        totalBookings: 0,
+        totalPlayers: 0
+      };
+
       console.log('Updating database with ticket data...');
       
-      // Update the database
-      await update(ref(database, `hosts/${currentUser.uid}/currentGame`), updates);
+      await databaseService.batchUpdateGameData(currentUser.uid, {
+        gameState: gameStateUpdates,
+        numberSystem: numberSystemUpdates,
+        tickets,
+        metrics: metricsData
+      });
       
       console.log('Database updated successfully. Moving to booking phase.');
       
@@ -246,6 +213,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       setShowToast(true);
       
       navigate('/dashboard');
+      
     } catch (error) {
       console.error('Error starting booking phase:', error);
       setToastMessage(`Failed to start booking phase: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -315,7 +283,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
             onUpdate={handleSettingsUpdate}
           />
           
-          {/* Host Phone Number Field */}
           <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border">
             <h3 className="text-base sm:text-lg font-medium text-gray-900">Host Contact</h3>
             <p className="text-gray-500 text-xs sm:text-sm mt-1">
@@ -341,7 +308,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                   onChange={(e) => {
                     let value = e.target.value;
                     
-                    // Ensure phone number always has a country code
                     if (!value.startsWith('+')) {
                       value = '+' + value;
                     }
@@ -386,7 +352,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         </div>
       </div>
       
-      {/* Game Setup Guide */}
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-4">
           Game Setup Guide
