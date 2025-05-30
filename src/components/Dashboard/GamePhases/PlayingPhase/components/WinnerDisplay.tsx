@@ -1,9 +1,8 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay.tsx - Updated without deleted services
-
+// src/components/Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay.tsx - Updated for simplified system
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { UserCircle, Phone, Clock, Trophy, Award, Download, Printer } from 'lucide-react';
 import type { Game } from '../../../../../types/game';
-import { exportToCSV } from '../../../../../services'; // Using simplified export
+import { exportToCSV } from '../../../../../services'; // Using simplified export function
 
 // Define default prizes configuration
 const DEFAULT_PRIZES: Game.Settings['prizes'] = {
