@@ -1,10 +1,8 @@
-// src/components/Settings/UserSettings.tsx - Updated without deleted services
-
+// src/components/Settings/UserSettings.tsx - Updated
 import React, { useState, useEffect } from 'react';
-import { ref, get, set } from 'firebase/database';
-import { database } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { AudioManager } from '../../utils/audioManager';
+import { FirebaseUtils } from '../../utils/firebaseUtils';
 
 interface UserPreferences {
   audio: {
@@ -53,6 +51,8 @@ export const UserSettings: React.FC = () => {
     type: 'success' | 'error';
   } | null>(null);
 
+  const firebaseUtils = FirebaseUtils.getInstance();
+
   useEffect(() => {
     loadPreferences();
   }, []);
@@ -61,11 +61,13 @@ export const UserSettings: React.FC = () => {
     if (!currentUser) return;
 
     try {
-      const prefsRef = ref(database, `hosts/${currentUser.uid}/preferences`);
-      const snapshot = await get(prefsRef);
+      const result = await firebaseUtils.readData<UserPreferences>(
+        currentUser.uid, 
+        'preferences'
+      );
       
-      if (snapshot.exists()) {
-        setPreferences(snapshot.val());
+      if (result.success && result.data) {
+        setPreferences(result.data);
       }
     } catch (error) {
       console.error('Error loading preferences:', error);
@@ -81,10 +83,16 @@ export const UserSettings: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const prefsRef = ref(database, `hosts/${currentUser.uid}/preferences`);
-      await set(prefsRef, preferences);
+      const result = await firebaseUtils.setData(
+        currentUser.uid, 
+        'preferences', 
+        preferences
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to save preferences');
+      }
       
-      // Update audio manager settings
       const audioManager = AudioManager.getInstance();
       audioManager.updateSettings({
         volume: preferences.audio.volume,
@@ -97,7 +105,6 @@ export const UserSettings: React.FC = () => {
         type: 'success'
       });
       
-      // Clear message after 3 seconds
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       console.error('Error saving preferences:', error);
@@ -120,7 +127,6 @@ export const UserSettings: React.FC = () => {
       </div>
 
       <div className="p-6 space-y-8">
-        {/* Audio Settings */}
         <section>
           <h3 className="text-lg font-medium text-gray-900 mb-4">
             Audio Settings
@@ -221,7 +227,6 @@ export const UserSettings: React.FC = () => {
           </div>
         </section>
 
-        {/* Game Defaults */}
         <section>
           <h3 className="text-lg font-medium text-gray-900 mb-4">
             Game Defaults
@@ -293,7 +298,6 @@ export const UserSettings: React.FC = () => {
           </div>
         </section>
 
-        {/* Interface Settings */}
         <section>
           <h3 className="text-lg font-medium text-gray-900 mb-4">
             Interface Settings
@@ -367,7 +371,6 @@ export const UserSettings: React.FC = () => {
           </div>
         </section>
 
-        {/* Save Button */}
         <div className="pt-6 border-t border-gray-200">
           {message && (
             <div className={`mb-4 p-4 rounded-md ${
