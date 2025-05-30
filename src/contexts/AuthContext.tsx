@@ -1,3 +1,4 @@
+// src/contexts/AuthContext.tsx - Updated
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { 
   User, 
@@ -7,17 +8,11 @@ import {
   getAuth,
   onAuthStateChanged
 } from 'firebase/auth';
-import { 
-  ref, 
-  get, 
-  set,
-  update, 
-  Database, 
-  getDatabase 
-} from 'firebase/database';
 import { useNavigate } from 'react-router-dom';
 import { LoadingSpinner } from '@components';
 import { app } from '@lib/firebase';
+import { FirebaseUtils } from '../utils/firebaseUtils';
+
 interface HostProfile {
   email: string;
   lastLogin: number;
@@ -45,9 +40,8 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Initialize Firebase services
 const auth: Auth = getAuth(app);
-const database: Database = getDatabase(app);
+const firebaseUtils = FirebaseUtils.getInstance();
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -63,7 +57,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     error: null,
   });
 
-  // Function to check if subscription is valid
   const checkSubscriptionValidity = (): boolean => {
     if (!state.userProfile) return false;
     
@@ -77,11 +70,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const hostRef = ref(database, `hosts/${user.uid}`);
-          const snapshot = await get(hostRef);
+          const result = await firebaseUtils.readData<HostProfile>(user.uid, '');
           
-          if (snapshot.exists()) {
-            const profile = snapshot.val() as HostProfile;
+          if (result.success && result.data) {
+            const profile = result.data;
             const isValid = profile.status === 'active' && 
                           profile.subscriptionEnd > Date.now();
             
@@ -129,8 +121,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const updateLastLogin = async (userId: string): Promise<void> => {
     try {
-      const lastLoginRef = ref(database, `hosts/${userId}/lastLogin`);
-      await set(lastLoginRef, Date.now());
+      const result = await firebaseUtils.updateData(userId, {
+        lastLogin: Date.now()
+      });
+      
+      if (!result.success) {
+        console.error('Error updating last login:', result.error);
+      }
     } catch (error) {
       console.error('Error updating last login:', error);
     }
@@ -142,19 +139,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
-      const hostRef = ref(database, `hosts/${userCredential.user.uid}`);
-      const snapshot = await get(hostRef);
+      const profileResult = await firebaseUtils.readData<HostProfile>(
+        userCredential.user.uid, 
+        ''
+      );
       
-      if (!snapshot.exists()) {
+      if (!profileResult.success || !profileResult.data) {
         await firebaseSignOut(auth);
         throw new Error('Host profile not found');
       }
       
-      const profile = snapshot.val() as HostProfile;
+      const profile = profileResult.data;
       const isValid = profile.status === 'active' && 
                      profile.subscriptionEnd > Date.now();
 
-      // Update last login timestamp
       await updateLastLogin(userCredential.user.uid);
 
       setState(prev => ({
@@ -209,8 +207,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setState(prev => ({ ...prev, isLoading: true }));
       
-      const profileRef = ref(database, `hosts/${state.currentUser.uid}`);
-      await update(profileRef, updates);
+      const result = await firebaseUtils.updateData(state.currentUser.uid, updates);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update profile');
+      }
 
       const newProfile = { ...state.userProfile, ...updates } as HostProfile;
       const isValid = newProfile.status === 'active' && 
