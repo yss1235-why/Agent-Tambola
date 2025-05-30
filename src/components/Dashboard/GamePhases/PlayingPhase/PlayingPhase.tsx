@@ -1,5 +1,4 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx
-
+// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx - Updated for simplified validation
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ref, update, get } from 'firebase/database';
@@ -35,7 +34,7 @@ const DEFAULT_SETTINGS: Game.Settings = {
 };
 
 interface PlayingPhaseProps {
-  currentGame?: Game.CurrentGame; // Make currentGame optional
+  currentGame?: Game.CurrentGame;
 }
 
 const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGame }) => {
@@ -54,7 +53,8 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
     pauseGame,
     resumeGame,
     completeGame,
-    setCallDelay
+    setCallDelay,
+    triggerManualValidation
   } = useGame();
   
   // Use prop if provided, otherwise use context
@@ -165,7 +165,6 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
       const snapshot = await get(gameRef);
       
       if (snapshot.exists()) {
-        // Update regardless of number count to ensure game starts paused
         await update(ref(database, `hosts/${hostId}/currentGame/gameState`), {
           status: 'paused'
         });
@@ -178,11 +177,9 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
   };
 
   const handleDelayChange = useCallback(async (newDelay: number) => {
-    // Update local state immediately for better UX
     setLocalCallDelay(newDelay);
     console.log(`Changing call delay to ${newDelay} seconds`);
     
-    // Then update through the game context (which will update Firebase)
     try {
       await setCallDelay(newDelay);
     } catch (err) {
@@ -194,12 +191,10 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
     if (!currentUser?.uid || !gameState) return;
     
     try {
-      // Toggle sound in local state for immediate feedback
       const newSoundEnabled = !soundEnabled;
       setSoundEnabled(newSoundEnabled);
       console.log(`Sound toggled to ${newSoundEnabled ? 'on' : 'off'}`);
       
-      // Update in Firebase
       await update(ref(database, `hosts/${currentUser.uid}/currentGame/gameState`), {
         soundEnabled: newSoundEnabled
       });
@@ -228,15 +223,12 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
         await resumeGame();
       }
     } catch (err) {
-      // More robust error handling
       console.error("Error changing game status:", err);
       
-      // Try alternative approach if permission denied
       if (err instanceof Error && err.message.includes("PERMISSION_DENIED")) {
         try {
           console.log("Trying alternative approach to update game status");
           
-          // Direct database update as a fallback
           if (currentUser?.uid) {
             if (status === 'paused') {
               await update(ref(database, `hosts/${currentUser.uid}/currentGame/gameState`), {
@@ -264,13 +256,10 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
   const handleGameEnd = useCallback(async () => {
     try {
       console.log('Ending game...');
-      // First update UI state for immediate feedback
       setIsGameComplete(true);
       
-      // Then call completeGame which will update Firebase
       await completeGame();
       
-      // Navigate after a delay to ensure state updates are reflected
       setTimeout(() => {
         navigate('/dashboard');
       }, 1000);
@@ -282,6 +271,20 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
   const handleStartNewGame = useCallback(async () => {
     navigate('/dashboard', { replace: true });
   }, [navigate]);
+
+  // Manual validation trigger for debugging
+  const handleManualValidation = useCallback(async () => {
+    try {
+      console.log('Triggering manual prize validation...');
+      if (triggerManualValidation) {
+        await triggerManualValidation();
+        console.log('Manual validation completed');
+      }
+    } catch (err) {
+      console.error('Manual validation failed:', err);
+      setError('Manual validation failed');
+    }
+  }, [triggerManualValidation]);
 
   // Rendering
   if (isLoading || !gameState) {
@@ -295,27 +298,64 @@ const PlayingPhase: React.FC<PlayingPhaseProps> = ({ currentGame: propCurrentGam
   // Safely extract the winners from gameState
   const winners = gameState.gameState.winners || {};
   
-  // Safe extraction of settings to prevent 'maxTickets' property error
+  // Safe extraction of settings to prevent property errors
   const settings = gameState.settings || DEFAULT_SETTINGS;
 
   return (
-    <PlayingPhaseView
-      currentGame={gameState}
-      winners={winners}
-      soundEnabled={soundEnabled}
-      callDelay={callDelay}
-      error={error}
-      isGameComplete={isGameComplete}
-      isProcessing={isProcessing}
-      queueNumbers={queueNumbers}
-      allPrizesWon={localAllPrizesWon}
-      onSoundToggle={handleSoundToggle}
-      onDelayChange={handleDelayChange}
-      onGameEnd={handleGameEnd}
-      onStartNewGame={handleStartNewGame}
-      onErrorDismiss={() => setError(null)}
-      onStatusChange={handleStatusChange}
-    />
+    <div className="space-y-4">
+      {/* Debug panel for development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="bg-gray-100 p-4 rounded-lg border">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Panel</h4>
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            <div>
+              <strong>Game Status:</strong> {gameState.gameState?.status || 'unknown'}
+            </div>
+            <div>
+              <strong>Phase:</strong> {gameState.gameState?.phase || 'unknown'}
+            </div>
+            <div>
+              <strong>Numbers Called:</strong> {calledNumbers.length}/90
+            </div>
+            <div>
+              <strong>All Prizes Won:</strong> {localAllPrizesWon ? 'Yes' : 'No'}
+            </div>
+            <div>
+              <strong>Game Complete:</strong> {isGameComplete ? 'Yes' : 'No'}
+            </div>
+            <div>
+              <strong>Processing:</strong> {isProcessing ? 'Yes' : 'No'}
+            </div>
+          </div>
+          <div className="mt-2">
+            <button
+              onClick={handleManualValidation}
+              className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              Trigger Manual Validation
+            </button>
+          </div>
+        </div>
+      )}
+
+      <PlayingPhaseView
+        currentGame={gameState}
+        winners={winners}
+        soundEnabled={soundEnabled}
+        callDelay={callDelay}
+        error={error}
+        isGameComplete={isGameComplete}
+        isProcessing={isProcessing}
+        queueNumbers={queueNumbers}
+        allPrizesWon={localAllPrizesWon}
+        onSoundToggle={handleSoundToggle}
+        onDelayChange={handleDelayChange}
+        onGameEnd={handleGameEnd}
+        onStartNewGame={handleStartNewGame}
+        onErrorDismiss={() => setError(null)}
+        onStatusChange={handleStatusChange}
+      />
+    </div>
   );
 };
 
