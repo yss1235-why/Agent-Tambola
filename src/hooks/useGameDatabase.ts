@@ -1,7 +1,6 @@
-// src/hooks/useGameDatabase.ts
+// src/hooks/useGameDatabase.ts - Updated to use centralized service
 import { useCallback, useRef } from 'react';
-import { ref, update, get, onValue, off } from 'firebase/database';
-import { database } from '../lib/firebase';
+import { GameDatabaseService } from '../services/GameDatabaseService';
 import type { Game } from '../types/game';
 import type { DatabaseHookReturn } from '../types/hooks';
 
@@ -11,7 +10,7 @@ interface UseGameDatabaseProps {
 }
 
 export function useGameDatabase({ hostId, onError }: UseGameDatabaseProps): DatabaseHookReturn {
-  const gameRef = useRef(ref(database, `hosts/${hostId}/currentGame`));
+  const databaseService = useRef(GameDatabaseService.getInstance());
   
   const updateGameState = useCallback(async (updates: Partial<Game.GameState>) => {
     if (!hostId) {
@@ -20,7 +19,7 @@ export function useGameDatabase({ hostId, onError }: UseGameDatabaseProps): Data
     }
     
     try {
-      await update(ref(database, `hosts/${hostId}/currentGame/gameState`), updates);
+      await databaseService.current.updateGameState(hostId, updates);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update game state';
       onError?.(message);
@@ -35,7 +34,7 @@ export function useGameDatabase({ hostId, onError }: UseGameDatabaseProps): Data
     }
     
     try {
-      await update(ref(database, `hosts/${hostId}/currentGame/numberSystem`), updates);
+      await databaseService.current.updateNumberSystem(hostId, updates);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update number system';
       onError?.(message);
@@ -50,8 +49,7 @@ export function useGameDatabase({ hostId, onError }: UseGameDatabaseProps): Data
     }
     
     try {
-      const snapshot = await get(gameRef.current);
-      return snapshot.exists() ? snapshot.val() as Game.CurrentGame : null;
+      return await databaseService.current.getCurrentGame(hostId);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get game data';
       onError?.(message);
@@ -66,13 +64,7 @@ export function useGameDatabase({ hostId, onError }: UseGameDatabaseProps): Data
     }
     
     try {
-      const timestamp = Date.now();
-      const historyRef = ref(database, `hosts/${hostId}/sessions/${timestamp}`);
-      await update(historyRef, {
-        ...game,
-        endTime: timestamp,
-        endReason: 'Game completed'
-      });
+      await databaseService.current.saveGameToHistory(hostId, game);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save game to history';
       onError?.(message);
@@ -86,20 +78,14 @@ export function useGameDatabase({ hostId, onError }: UseGameDatabaseProps): Data
       return () => {};
     }
     
-    const unsubscribe = onValue(gameRef.current, (snapshot) => {
-      try {
-        const gameData = snapshot.exists() ? snapshot.val() as Game.CurrentGame : null;
-        callback(gameData);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Error processing game data';
-        onError?.(message);
+    return databaseService.current.subscribeToCurrentGame(hostId, (game, error) => {
+      if (error) {
+        onError?.(error);
         callback(null);
+      } else {
+        callback(game);
       }
     });
-    
-    return () => {
-      off(gameRef.current, 'value', unsubscribe);
-    };
   }, [hostId, onError]);
 
   return {
