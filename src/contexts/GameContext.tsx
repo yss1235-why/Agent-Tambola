@@ -1,11 +1,11 @@
-// src/contexts/GameContext.tsx - Updated without deleted services
-
+// src/contexts/GameContext.tsx - Updated for simplified validation system
 import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
 import { useGameController } from '../hooks/useGameController';
 import type { Game } from '../types/game';
 
 type GameContextType = ReturnType<typeof useGameController> & {
   hostId: string | null;
+  triggerManualValidation: () => Promise<void>;
 };
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -21,13 +21,17 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
       console.log(`Number called: ${number}`);
     },
     onPrizeWon: (prizeType: keyof Game.Winners, ticketIds: string[]) => {
-      console.log(`Prize won: ${prizeType}`, ticketIds);
+      console.log(`Prize won: ${prizeType} by tickets:`, ticketIds);
+      
+      // Log detailed prize information
+      const prizeDisplayName = prizeType.replace(/([A-Z])/g, ' $1').trim();
+      console.log(`🏆 ${prizeDisplayName} prize awarded to ticket(s): ${ticketIds.join(', ')}`);
     },
     onQueueChanged: (queue: number[]) => {
-      console.log(`Queue updated: ${queue.length} numbers`);
+      console.log(`Queue updated: ${queue.length} numbers in queue`);
     },
     onGameComplete: () => {
-      console.log('Game completed');
+      console.log('🎉 Game completed successfully');
     },
     onError: (error: string) => {
       console.error('Game error:', error);
@@ -41,7 +45,10 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
   
   const contextValue = useMemo(() => ({
     ...gameController,
-    hostId
+    hostId,
+    triggerManualValidation: gameController.triggerPrizeValidation || (async () => {
+      console.log('Manual validation not available');
+    })
   }), [gameController, hostId]);
   
   return (
@@ -58,3 +65,5 @@ export function useGame() {
   }
   return context;
 }
+
+export default GameContext;
