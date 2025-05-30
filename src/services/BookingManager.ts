@@ -1,7 +1,5 @@
-// src/services/BookingManager.ts
-
-import { ref, get, set, update, remove } from 'firebase/database';
-import { database } from '../lib/firebase';
+// src/services/BookingManager.ts - Updated to use centralized database service
+import { GameDatabaseService } from './GameDatabaseService';
 import { Game } from '../types/game';
 
 interface BookingCreateData {
@@ -13,8 +11,11 @@ interface BookingCreateData {
 export class BookingManager {
   private static instance: BookingManager;
   private hostId: string | null = null;
+  private databaseService: GameDatabaseService;
   
-  private constructor() {}
+  private constructor() {
+    this.databaseService = GameDatabaseService.getInstance();
+  }
   
   public static getInstance(): BookingManager {
     if (!BookingManager.instance) {
@@ -33,15 +34,12 @@ export class BookingManager {
     }
     
     try {
-      const playersRef = ref(database, `hosts/${this.hostId}/currentGame/players`);
-      const snapshot = await get(playersRef);
-      
-      if (!snapshot.exists()) {
+      const currentGame = await this.databaseService.getCurrentGame(this.hostId);
+      if (!currentGame || !currentGame.players) {
         return [];
       }
       
-      const playersData = snapshot.val();
-      return Object.values(playersData) as Game.Player[];
+      return Object.values(currentGame.players);
     } catch (error) {
       console.error('Error getting all bookings:', error);
       throw new Error('Failed to retrieve bookings');
@@ -56,10 +54,19 @@ export class BookingManager {
     try {
       const timestamp = Date.now();
       const playerId = `player_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
-      const updates: Record<string, any> = {};
       
-      // Create player record
-      updates[`hosts/${this.hostId}/currentGame/players/${playerId}`] = {
+      const currentGame = await this.databaseService.getCurrentGame(this.hostId);
+      if (!currentGame) {
+        throw new Error('No active game found');
+      }
+
+      const currentMetrics = currentGame.bookingMetrics || {
+        totalBookings: 0,
+        totalPlayers: 0,
+        lastBookingTime: 0
+      };
+
+      const newPlayer: Game.Player = {
         id: playerId,
         name: data.playerName,
         phoneNumber: data.phoneNumber,
@@ -67,10 +74,12 @@ export class BookingManager {
         bookingTime: timestamp,
         totalTickets: data.tickets.length
       };
-      
-      // Update ticket bookings
+
+      const newBookings: Record<string, Game.Booking> = {};
+      const ticketUpdates: Record<string, Partial<Game.Ticket>> = {};
+
       data.tickets.forEach(ticketId => {
-        updates[`hosts/${this.hostId}/currentGame/activeTickets/bookings/${ticketId}`] = {
+        newBookings[ticketId] = {
           number: parseInt(ticketId),
           playerName: data.playerName,
           phoneNumber: data.phoneNumber,
@@ -79,26 +88,22 @@ export class BookingManager {
           timestamp
         };
         
-        updates[`hosts/${this.hostId}/currentGame/activeTickets/tickets/${ticketId}/status`] = 'booked';
+        ticketUpdates[ticketId] = { status: 'booked' };
       });
-      
-      // Update booking metrics
-      const metricsRef = ref(database, `hosts/${this.hostId}/currentGame/bookingMetrics`);
-      const metricsSnapshot = await get(metricsRef);
-      const currentMetrics = metricsSnapshot.exists() ? metricsSnapshot.val() : {
-        totalBookings: 0,
-        totalPlayers: 0,
-        lastBookingTime: 0
-      };
-      
-      updates[`hosts/${this.hostId}/currentGame/bookingMetrics`] = {
+
+      const updatedMetrics: Game.BookingMetrics = {
         lastBookingTime: timestamp,
         totalBookings: currentMetrics.totalBookings + data.tickets.length,
         totalPlayers: currentMetrics.totalPlayers + 1
       };
-      
-      // Apply all updates atomically
-      await update(ref(database), updates);
+
+      await this.databaseService.batchUpdateGameData(this.hostId, {
+        players: { [playerId]: newPlayer },
+        bookings: newBookings,
+        tickets: ticketUpdates,
+        metrics: updatedMetrics
+      });
+
     } catch (error) {
       console.error('Error creating booking:', error);
       throw new Error('Failed to create booking');
@@ -114,14 +119,12 @@ export class BookingManager {
     }
     
     try {
-      const bookingRef = ref(database, `hosts/${this.hostId}/currentGame/activeTickets/bookings/${ticketId}`);
-      const snapshot = await get(bookingRef);
-      
-      if (!snapshot.exists()) {
+      const currentGame = await this.databaseService.getCurrentGame(this.hostId);
+      if (!currentGame || !currentGame.activeTickets?.bookings?.[ticketId]) {
         throw new Error(`Booking not found for ticket ${ticketId}`);
       }
-      
-      const booking = snapshot.val();
+
+      const booking = currentGame.activeTickets.bookings[ticketId];
       const updatedBooking = { ...booking };
       
       if (updates.playerName) {
@@ -131,32 +134,32 @@ export class BookingManager {
       if (updates.phoneNumber) {
         updatedBooking.phoneNumber = updates.phoneNumber;
       }
-      
-      // Update the booking
-      await set(bookingRef, updatedBooking);
-      
-      // If player info changed, update the player record too
+
+      const batchUpdates: any = {
+        bookings: { [ticketId]: updatedBooking }
+      };
+
       if (booking.playerId && (updates.playerName || updates.phoneNumber)) {
-        const playerRef = ref(database, `hosts/${this.hostId}/currentGame/players/${booking.playerId}`);
-        const playerSnapshot = await get(playerRef);
+        const players = currentGame.players || {};
+        const player = players[booking.playerId];
         
-        if (playerSnapshot.exists()) {
-          const player = playerSnapshot.val();
-          const playerUpdates: Record<string, any> = {};
+        if (player) {
+          const updatedPlayer = { ...player };
           
           if (updates.playerName) {
-            playerUpdates.name = updates.playerName;
+            updatedPlayer.name = updates.playerName;
           }
           
           if (updates.phoneNumber) {
-            playerUpdates.phoneNumber = updates.phoneNumber;
+            updatedPlayer.phoneNumber = updates.phoneNumber;
           }
           
-          if (Object.keys(playerUpdates).length > 0) {
-            await update(playerRef, playerUpdates);
-          }
+          batchUpdates.players = { [booking.playerId]: updatedPlayer };
         }
       }
+
+      await this.databaseService.batchUpdateGameData(this.hostId, batchUpdates);
+
     } catch (error) {
       console.error('Error updating booking:', error);
       throw new Error('Failed to update booking');
@@ -169,62 +172,64 @@ export class BookingManager {
     }
     
     try {
-      const updates: Record<string, any> = {};
-      const playerIds = new Set<string>();
-      
-      // First, get all the bookings to find player IDs
-      for (const ticketId of ticketIds) {
-        const bookingRef = ref(database, `hosts/${this.hostId}/currentGame/activeTickets/bookings/${ticketId}`);
-        const snapshot = await get(bookingRef);
-        
-        if (snapshot.exists()) {
-          const booking = snapshot.val();
-          if (booking.playerId) {
-            playerIds.add(booking.playerId);
-          }
-          
-          // Remove booking
-          updates[`hosts/${this.hostId}/currentGame/activeTickets/bookings/${ticketId}`] = null;
-          
-          // Reset ticket status
-          updates[`hosts/${this.hostId}/currentGame/activeTickets/tickets/${ticketId}/status`] = 'available';
-        }
+      const currentGame = await this.databaseService.getCurrentGame(this.hostId);
+      if (!currentGame) {
+        throw new Error('No active game found');
       }
-      
-      // Update player records
-      for (const playerId of playerIds) {
-        const playerRef = ref(database, `hosts/${this.hostId}/currentGame/players/${playerId}`);
-        const snapshot = await get(playerRef);
+
+      const playerIds = new Set<string>();
+      const bookingUpdates: Record<string, null> = {};
+      const ticketUpdates: Record<string, Partial<Game.Ticket>> = {};
+
+      ticketIds.forEach(ticketId => {
+        const booking = currentGame.activeTickets?.bookings?.[ticketId];
+        if (booking?.playerId) {
+          playerIds.add(booking.playerId);
+        }
         
-        if (snapshot.exists()) {
-          const player = snapshot.val();
-          const updatedTickets = player.tickets.filter((t: string) => !ticketIds.includes(t));
+        bookingUpdates[ticketId] = null;
+        ticketUpdates[ticketId] = { status: 'available' };
+      });
+
+      const batchUpdates: any = {
+        bookings: bookingUpdates,
+        tickets: ticketUpdates
+      };
+
+      const playerUpdates: Record<string, Game.Player | null> = {};
+      const players = currentGame.players || {};
+
+      for (const playerId of playerIds) {
+        const player = players[playerId];
+        if (player) {
+          const updatedTickets = player.tickets.filter(t => !ticketIds.includes(t));
           
           if (updatedTickets.length === 0) {
-            // Remove player if they have no more tickets
-            updates[`hosts/${this.hostId}/currentGame/players/${playerId}`] = null;
+            playerUpdates[playerId] = null;
           } else {
-            // Update player's tickets
-            updates[`hosts/${this.hostId}/currentGame/players/${playerId}/tickets`] = updatedTickets;
-            updates[`hosts/${this.hostId}/currentGame/players/${playerId}/totalTickets`] = updatedTickets.length;
+            playerUpdates[playerId] = {
+              ...player,
+              tickets: updatedTickets,
+              totalTickets: updatedTickets.length
+            };
           }
         }
       }
-      
-      // Update booking metrics
-      const metricsRef = ref(database, `hosts/${this.hostId}/currentGame/bookingMetrics`);
-      const metricsSnapshot = await get(metricsRef);
-      
-      if (metricsSnapshot.exists()) {
-        const metrics = metricsSnapshot.val();
-        updates[`hosts/${this.hostId}/currentGame/bookingMetrics/totalBookings`] = 
-          Math.max(0, metrics.totalBookings - ticketIds.length);
-          
-        // We don't decrement totalPlayers because we don't know if all players were removed
+
+      if (Object.keys(playerUpdates).length > 0) {
+        batchUpdates.players = playerUpdates;
       }
-      
-      // Apply all updates atomically
-      await update(ref(database), updates);
+
+      const currentMetrics = currentGame.bookingMetrics;
+      if (currentMetrics) {
+        batchUpdates.metrics = {
+          ...currentMetrics,
+          totalBookings: Math.max(0, currentMetrics.totalBookings - ticketIds.length)
+        };
+      }
+
+      await this.databaseService.batchUpdateGameData(this.hostId, batchUpdates);
+
     } catch (error) {
       console.error('Error canceling booking:', error);
       throw new Error('Failed to cancel booking');
@@ -237,18 +242,15 @@ export class BookingManager {
     }
     
     try {
-      const playersRef = ref(database, `hosts/${this.hostId}/currentGame/players`);
-      const snapshot = await get(playersRef);
-      
-      if (!snapshot.exists()) {
+      const currentGame = await this.databaseService.getCurrentGame(this.hostId);
+      if (!currentGame || !currentGame.players) {
         return [];
       }
-      
-      const players = snapshot.val();
+
+      const players = currentGame.players;
       let matchingTickets: string[] = [];
       
-      // Find players with matching name and phone
-      Object.values(players).forEach((player: any) => {
+      Object.values(players).forEach((player: Game.Player) => {
         if (
           player.name.toLowerCase() === playerName.toLowerCase() &&
           player.phoneNumber === phoneNumber
@@ -270,17 +272,15 @@ export class BookingManager {
     }
     
     try {
-      const ticketsRef = ref(database, `hosts/${this.hostId}/currentGame/activeTickets/tickets`);
-      const snapshot = await get(ticketsRef);
-      
-      if (!snapshot.exists()) {
+      const currentGame = await this.databaseService.getCurrentGame(this.hostId);
+      if (!currentGame || !currentGame.activeTickets?.tickets) {
         return [];
       }
-      
-      const tickets = snapshot.val();
+
+      const tickets = currentGame.activeTickets.tickets;
       const availableTickets: string[] = [];
       
-      Object.entries(tickets).forEach(([ticketId, ticket]: [string, any]) => {
+      Object.entries(tickets).forEach(([ticketId, ticket]) => {
         if (ticket.status === 'available') {
           availableTickets.push(ticketId);
         }
