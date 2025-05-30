@@ -1,17 +1,14 @@
-// src/components/Dashboard/GamePhases/BookingPhase/BookingPhase.tsx
-
+// src/components/Dashboard/GamePhases/BookingPhase/BookingPhase.tsx - Updated
 import React, { useState, useEffect } from 'react';
-import { ref, update, onValue } from 'firebase/database';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { database } from '../../../../lib/firebase';
+import { GameDatabaseService } from '../../../../services/GameDatabaseService';
 import { LoadingSpinner, Toast } from '@components';
 import TicketGrid from './components/TicketGrid';
 import BookingForm from './components/BookingForm';
 import BookingsList from './components/BookingsList';
 import { Game, GAME_PHASES, GAME_STATUSES } from '../../../../types/game';
 import { handleApiError } from '@utils/errorHandler';
-import { BookingManager } from '../../../../services'; // Added correct import for BookingManager
 
 interface TicketBookingData {
   name: string;
@@ -33,6 +30,8 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
+  const databaseService = GameDatabaseService.getInstance();
+
   useEffect(() => {
     // Initialize with the provided currentGame prop
     if (currentGame) {
@@ -40,17 +39,23 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
       setIsLoading(false);
     }
 
-    const loadCurrentGame = async () => {
+    const loadCurrentGame = () => {
       if (!currentUser?.uid) {
         setIsLoading(false);
         return;
       }
 
-      const gameRef = ref(database, `hosts/${currentUser.uid}/currentGame`);
-      const unsubscribe = onValue(gameRef, (snapshot) => {
-        try {
-          if (snapshot.exists()) {
-            const gameData = snapshot.val() as Game.CurrentGame;
+      const unsubscribe = databaseService.subscribeToCurrentGame(
+        currentUser.uid,
+        (gameData, error) => {
+          if (error) {
+            console.error('Error loading game data:', error);
+            setError(handleApiError(error, 'Error loading game data'));
+            setIsLoading(false);
+            return;
+          }
+
+          if (gameData) {
             if (!gameData.activeTickets?.tickets) {
               setError('No tickets found in the game');
               return;
@@ -61,25 +66,25 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
             setError('No active game found');
             navigate('/dashboard');
           }
-        } catch (err) {
-          console.error('Error processing game data:', err);
-          setError(handleApiError(err, 'Error loading game data'));
-        } finally {
           setIsLoading(false);
         }
-      });
+      );
 
-      // Return a function that doesn't throw an error
-      return () => {
-        unsubscribe();
-      };
+      return unsubscribe;
     };
 
     // Only load from Firebase if currentGame is not provided
+    let unsubscribe: (() => void) | null = null;
     if (!currentGame) {
-      loadCurrentGame();
+      unsubscribe = loadCurrentGame();
     }
-  }, [currentUser?.uid, navigate, currentGame]);
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [currentUser?.uid, navigate, currentGame, databaseService]);
 
   const handleTicketSelect = (ticketId: string, isSelected: boolean) => {
     setSelectedTickets(prev =>
@@ -101,21 +106,31 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
     try {
       const timestamp = Date.now();
       const playerId = `player_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
-      const updates: Record<string, any> = {};
-
-      // Update player information
-      updates[`hosts/${currentUser.uid}/currentGame/players/${playerId}`] = {
-        id: playerId,
-        name: playerData.name,
-        phoneNumber: playerData.phone,
-        tickets: selectedTickets,
-        bookingTime: timestamp,
-        totalTickets: selectedTickets.length
+      
+      // Prepare batch update data
+      const updateData = {
+        players: {
+          [playerId]: {
+            id: playerId,
+            name: playerData.name,
+            phoneNumber: playerData.phone,
+            tickets: selectedTickets,
+            bookingTime: timestamp,
+            totalTickets: selectedTickets.length
+          }
+        },
+        bookings: {} as Record<string, Game.Booking>,
+        tickets: {} as Record<string, Partial<Game.Ticket>>,
+        metrics: {
+          lastBookingTime: timestamp,
+          totalBookings: (gameData.bookingMetrics?.totalBookings || 0) + selectedTickets.length,
+          totalPlayers: (gameData.bookingMetrics?.totalPlayers || 0) + 1
+        }
       };
 
-      // Update ticket bookings
+      // Add booking and ticket updates
       selectedTickets.forEach(ticketId => {
-        updates[`hosts/${currentUser.uid}/currentGame/activeTickets/bookings/${ticketId}`] = {
+        updateData.bookings[ticketId] = {
           number: parseInt(ticketId),
           playerName: playerData.name,
           phoneNumber: playerData.phone,
@@ -124,20 +139,18 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
           timestamp
         };
 
-        updates[`hosts/${currentUser.uid}/currentGame/activeTickets/tickets/${ticketId}/status`] = 'booked';
+        updateData.tickets[ticketId] = {
+          status: 'booked'
+        };
       });
 
-      // Update booking metrics
-      updates[`hosts/${currentUser.uid}/currentGame/bookingMetrics`] = {
-        lastBookingTime: timestamp,
-        totalBookings: (gameData.bookingMetrics?.totalBookings || 0) + selectedTickets.length,
-        totalPlayers: (gameData.bookingMetrics?.totalPlayers || 0) + 1
-      };
-
-      await update(ref(database), updates);
+      // Perform batch update
+      await databaseService.batchUpdateGameData(currentUser.uid, updateData);
+      
       setSelectedTickets([]);
       setToastMessage(`Successfully booked ${selectedTickets.length} ticket(s)`);
       setShowToast(true);
+      
     } catch (err) {
       console.error('Error booking tickets:', err);
       setError(handleApiError(err, 'Failed to book tickets. Please try again.'));
@@ -146,9 +159,8 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
     }
   };
 
-  // Added this function to handle booking editing
   const handleEditBooking = async (ticketId: string, data: { name: string; phone: string }) => {
-    if (!currentUser?.uid) {
+    if (!currentUser?.uid || !gameData) {
       setError('Unable to update booking at this time');
       return;
     }
@@ -157,16 +169,43 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
     setError(null);
 
     try {
-      const bookingManager = BookingManager.getInstance();
-      bookingManager.initialize(currentUser.uid);
-      
-      await bookingManager.updateBooking(ticketId, {
+      const existingBooking = gameData.activeTickets?.bookings?.[ticketId];
+      if (!existingBooking) {
+        throw new Error('Booking not found');
+      }
+
+      // Update booking
+      const updatedBooking: Game.Booking = {
+        ...existingBooking,
         playerName: data.name,
         phoneNumber: data.phone
+      };
+
+      await databaseService.batchUpdateGameData(currentUser.uid, {
+        bookings: {
+          [ticketId]: updatedBooking
+        }
       });
+
+      // Update player if exists
+      if (existingBooking.playerId) {
+        const players = gameData.players || {};
+        const existingPlayer = players[existingBooking.playerId];
+        
+        if (existingPlayer) {
+          const updatedPlayer: Game.Player = {
+            ...existingPlayer,
+            name: data.name,
+            phoneNumber: data.phone
+          };
+
+          await databaseService.updatePlayer(currentUser.uid, existingBooking.playerId, updatedPlayer);
+        }
+      }
       
       setToastMessage('Booking updated successfully');
       setShowToast(true);
+      
     } catch (err) {
       console.error('Error updating booking:', err);
       setError(handleApiError(err, 'Failed to update booking. Please try again.'));
@@ -179,7 +218,7 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
     if (!currentUser?.uid) return;
 
     try {
-      await update(ref(database, `hosts/${currentUser.uid}/currentGame/gameState`), {
+      await databaseService.updateGameState(currentUser.uid, {
         phase: GAME_PHASES.SETUP,
         status: GAME_STATUSES.SETUP
       });
@@ -197,42 +236,43 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
     }
 
     try {
-      // Prepare updates for the game state - FULLY DEFINED TO AVOID PARTIAL UPDATES
-      const updates = {
-        'gameState': {
-          phase: GAME_PHASES.PLAYING,    // Set to playing phase (3)
-          status: GAME_STATUSES.PAUSED,  // Start paused so user can manually start
-          isAutoCalling: false,
-          soundEnabled: true,
-          winners: gameData.gameState?.winners || {
-            quickFive: [],
-            topLine: [],
-            middleLine: [],
-            bottomLine: [],
-            corners: [],
-            starCorners: [],
-            halfSheet: [],
-            fullSheet: [],
-            fullHouse: [],
-            secondFullHouse: []
-          },
-          allPrizesWon: false  // Ensure this is explicitly set to false
+      const gameStateUpdates: Partial<Game.GameState> = {
+        phase: GAME_PHASES.PLAYING,
+        status: GAME_STATUSES.PAUSED,
+        isAutoCalling: false,
+        soundEnabled: true,
+        winners: gameData.gameState?.winners || {
+          quickFive: [],
+          topLine: [],
+          middleLine: [],
+          bottomLine: [],
+          corners: [],
+          starCorners: [],
+          halfSheet: [],
+          fullSheet: [],
+          fullHouse: [],
+          secondFullHouse: []
         },
-        'numberSystem': {
-          callDelay: gameData.settings.callDelay || 5,
-          currentNumber: null,
-          calledNumbers: [],
-          queue: []
-        }
+        allPrizesWon: false
       };
 
-      console.log("Starting game with updates:", updates);
+      const numberSystemUpdates: Partial<Game.NumberSystem> = {
+        callDelay: gameData.settings.callDelay || 5,
+        currentNumber: null,
+        calledNumbers: [],
+        queue: []
+      };
 
-      // Update Firebase
-      await update(ref(database, `hosts/${currentUser.uid}/currentGame`), updates);
+      console.log("Starting game with updates:", { gameStateUpdates, numberSystemUpdates });
+
+      // Batch update both game state and number system
+      await databaseService.batchUpdateGameData(currentUser.uid, {
+        gameState: gameStateUpdates,
+        numberSystem: numberSystemUpdates
+      });
       
-      // Navigate to playing phase
       navigate('/playing-phase');
+      
     } catch (err) {
       console.error('Error starting game:', err);
       setError(handleApiError(err, 'Failed to start the game.'));
@@ -307,7 +347,7 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
 
           <BookingsList 
             bookings={gameData.activeTickets?.bookings || {}}
-            onEditBooking={handleEditBooking} // Updated to use the handleEditBooking function
+            onEditBooking={handleEditBooking}
           />
 
           <div className="pt-6 border-t">
