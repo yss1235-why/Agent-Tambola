@@ -1,10 +1,9 @@
-// src/services/index.ts - Simplified version removing deleted services
-
+// src/services/index.ts - Updated version
 export { BookingManager } from './BookingManager';
 export { GameService } from './GameService';
-export { PrizeValidationService } from './PrizeValidationService';
+export { GameDatabaseService } from './GameDatabaseService';
 
-// Simple CSV export function to replace the complex ExportManager
+// Simple CSV export function to replace complex ExportManager
 export const exportToCSV = (data: any[], filename: string): void => {
   if (data.length === 0) return;
   
@@ -32,8 +31,7 @@ export const exportToCSV = (data: any[], filename: string): void => {
   URL.revokeObjectURL(url);
 };
 
-// Simple toast notification function to replace NotificationManager
+// Simple toast notification function
 export const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info'): void => {
-  // This will be handled by the Toast component that already exists
   console.log(`${type.toUpperCase()}: ${message}`);
 };
