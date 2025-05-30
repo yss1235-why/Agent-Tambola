@@ -1,4 +1,4 @@
-// src/types/hooks.ts
+// src/types/hooks.ts - Updated for simplified validation system
 import type { Game } from './game';
 
 // Shared callback interface for all game hooks
@@ -62,8 +62,80 @@ export interface AudioHookReturn {
   isEnabled: boolean;
 }
 
-// Prize validation hook interface
+// Simplified prize validation hook interface
 export interface PrizeValidationHookReturn {
   validatePrizes: (calledNumbers: number[]) => Promise<void>;
   isValidating: boolean;
+}
+
+// Prize validation result interface for utility functions
+export interface PrizeValidationResult {
+  isWinner: boolean;
+  winningTickets: string[];
+  prizeType: keyof Game.Winners;
+}
+
+// Validation context interface for pure validation functions
+export interface ValidationContext {
+  tickets: Record<string, Game.Ticket>;
+  bookings: Record<string, Game.Booking>;
+  calledNumbers: number[];
+  currentWinners: Game.Winners;
+  activePrizes: Game.Settings['prizes'];
+}
+
+// Game controller interface for the main useGameController hook
+export interface GameControllerReturn extends GameControllerState {
+  // Game control actions
+  pauseGame: () => Promise<void>;
+  resumeGame: () => Promise<void>;
+  completeGame: () => Promise<void>;
+  generateAndCallNumber: () => Promise<number | null>;
+  setCallDelay: (delay: number) => Promise<void>;
+  
+  // Manual validation trigger for debugging
+  triggerPrizeValidation?: () => Promise<void>;
+  
+  // Audio controls
+  setSoundEnabled: (enabled: boolean) => void;
+  setVolume: (volume: number) => void;
+  
+  // Utility functions
+  resetError: () => void;
+}
+
+// Booking management interface
+export interface BookingHookReturn {
+  createBooking: (playerData: { name: string; phone: string; tickets: string[] }) => Promise<void>;
+  updateBooking: (ticketId: string, updates: { name?: string; phone?: string }) => Promise<void>;
+  cancelBooking: (ticketIds: string[]) => Promise<void>;
+  getPlayerBookings: (playerName: string, phoneNumber: string) => Promise<string[]>;
+  getAvailableTickets: () => Promise<string[]>;
+  isProcessing: boolean;
+}
+
+// Settings management interface
+export interface SettingsHookReturn {
+  updateSettings: (settings: Partial<Game.Settings>) => Promise<void>;
+  saveDefaultSettings: (settings: Game.Settings) => Promise<void>;
+  getDefaultSettings: () => Promise<Game.Settings | null>;
+  isLoading: boolean;
+  error: string | null;
+}
+
+// History management interface
+export interface HistoryHookReturn {
+  getGameHistory: () => Promise<Game.GameSession[]>;
+  saveGameToHistory: (game: Game.CurrentGame) => Promise<void>;
+  exportGameSession: (sessionId: string) => Promise<void>;
+  isLoading: boolean;
+  error: string | null;
+}
+
+// Ticket management interface
+export interface TicketHookReturn {
+  loadTicketSet: (setId: number, maxTickets: number) => Promise<Record<string, Game.Ticket>>;
+  validateTicketData: (tickets: Record<string, Game.Ticket>) => boolean;
+  isLoading: boolean;
+  error: string | null;
 }
