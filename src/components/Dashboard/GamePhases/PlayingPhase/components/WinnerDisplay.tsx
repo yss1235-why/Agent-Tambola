@@ -1,8 +1,9 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay.tsx
+// src/components/Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay.tsx - Updated without deleted services
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { UserCircle, Phone, Clock, Trophy, Award, Download, Printer } from 'lucide-react';
 import type { Game } from '../../../../../types/game';
+import { exportToCSV } from '../../../../../services'; // Using simplified export
 
 // Define default prizes configuration
 const DEFAULT_PRIZES: Game.Settings['prizes'] = {
@@ -30,7 +31,7 @@ interface WinnerDisplayProps {
   winners?: Game.Winners;
   tickets: Record<string, Game.Ticket>;
   bookings: Record<string, Game.Booking>;
-  prizes?: Game.Settings['prizes']; // Make prizes optional
+  prizes?: Game.Settings['prizes'];
   showAllPrizes?: boolean;
   onWinnerNotification?: (prizeType: string, playerName: string) => void;
 }
@@ -39,7 +40,7 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
   winners = {},
   tickets = {}, 
   bookings = {}, 
-  prizes = DEFAULT_PRIZES,  // Provide default value
+  prizes = DEFAULT_PRIZES,
   showAllPrizes = false,
   onWinnerNotification
 }) => {
@@ -87,7 +88,6 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
     // Detect new winners
     const currentCount = formattedWinners.length;
     if (currentCount > prevWinnersCountRef.current && prevWinnersCountRef.current > 0) {
-      // There's a new winner!
       const newestWinner = sortedWinners[0];
       setHighlightedWinner(`${newestWinner.ticketId}-${newestWinner.prizeType}`);
       
@@ -140,7 +140,6 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
   };
 
   const printWinnersList = useCallback(() => {
-    // Create a styled version for printing
     const printWindow = window.open('', '_blank');
     
     if (!printWindow) {
@@ -199,37 +198,24 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
     printWindow.print();
   }, [displayedWinners]);
 
-  // Export winners as CSV
+  // Export winners using simplified export function
   const exportWinnersAsCsv = useCallback(() => {
     if (displayedWinners.length === 0) return;
     
-    const headers = ['Prize Type', 'Ticket ID', 'Player Name', 'Phone Number', 'Timestamp'];
-    const csvContent = displayedWinners.map((winner) => {
-      const timestamp = winner.timestamp 
+    const exportData = displayedWinners.map((winner) => ({
+      'Prize Type': winner.prizeType,
+      'Ticket ID': winner.ticketId,
+      'Player Name': winner.playerName,
+      'Phone Number': winner.phoneNumber,
+      'Timestamp': winner.timestamp 
         ? new Date(winner.timestamp).toLocaleString() 
-        : 'N/A';
-      return [
-        winner.prizeType,
-        winner.ticketId,
-        winner.playerName,
-        winner.phoneNumber,
-        timestamp
-      ].join(',');
-    });
+        : 'N/A'
+    }));
     
-    const csv = [
-      headers.join(','),
-      ...csvContent
-    ].join('\n');
-    
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `tambola-winners-${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportToCSV(
+      exportData,
+      `tambola-winners-${new Date().toISOString().slice(0, 10)}.csv`
+    );
   }, [displayedWinners]);
 
   // If no winners data exists yet
