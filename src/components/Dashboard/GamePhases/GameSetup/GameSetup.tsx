@@ -191,7 +191,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       };
 
       const metricsData: Game.BookingMetrics = {
-        startTime: Date.now(),
+        startTime: Date.now(),  // Now this property exists in the interface
         lastBookingTime: Date.now(),
         totalBookings: 0,
         totalPlayers: 0
