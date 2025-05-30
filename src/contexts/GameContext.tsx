@@ -1,10 +1,9 @@
-// src/contexts/GameContext.tsx
+// src/contexts/GameContext.tsx - Updated without deleted services
 
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
 import { useGameController } from '../hooks/useGameController';
 import type { Game } from '../types/game';
 
-// Make sure to include gameCompleted in the context type
 type GameContextType = ReturnType<typeof useGameController> & {
   hostId: string | null;
 };
