@@ -1,4 +1,4 @@
-// src/components/Settings/UserSettings.tsx
+// src/components/Settings/UserSettings.tsx - Updated without deleted services
 
 import React, { useState, useEffect } from 'react';
 import { ref, get, set } from 'firebase/database';
@@ -12,6 +12,7 @@ interface UserPreferences {
     useCustomAudio: boolean;
     numberCallDelay: number;
     announceWinners: boolean;
+    enabled: boolean;
   };
   gameDefaults: {
     defaultTicketSet: number;
@@ -23,11 +24,6 @@ interface UserPreferences {
     compactView: boolean;
     showAnimations: boolean;
   };
-  notifications: {
-    enableSound: boolean;
-    enableDesktop: boolean;
-    winClaimAlert: boolean;
-  };
 }
 
 export const UserSettings: React.FC = () => {
@@ -37,7 +33,8 @@ export const UserSettings: React.FC = () => {
       volume: 1,
       useCustomAudio: true,
       numberCallDelay: 5,
-      announceWinners: true
+      announceWinners: true,
+      enabled: true
     },
     gameDefaults: {
       defaultTicketSet: 1,
@@ -48,11 +45,6 @@ export const UserSettings: React.FC = () => {
       darkMode: false,
       compactView: false,
       showAnimations: true
-    },
-    notifications: {
-      enableSound: true,
-      enableDesktop: true,
-      winClaimAlert: true
     }
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -97,13 +89,16 @@ export const UserSettings: React.FC = () => {
       audioManager.updateSettings({
         volume: preferences.audio.volume,
         useCustomAudio: preferences.audio.useCustomAudio,
-        callDelay: preferences.audio.numberCallDelay * 1000
+        enabled: preferences.audio.enabled
       });
 
       setMessage({
         text: 'Settings saved successfully',
         type: 'success'
       });
+      
+      // Clear message after 3 seconds
+      setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       console.error('Error saving preferences:', error);
       setMessage({
@@ -132,6 +127,27 @@ export const UserSettings: React.FC = () => {
           </h3>
           <div className="space-y-4">
             <div>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={preferences.audio.enabled}
+                  onChange={e => setPreferences(prev => ({
+                    ...prev,
+                    audio: {
+                      ...prev.audio,
+                      enabled: e.target.checked
+                    }
+                  }))}
+                  className="rounded border-gray-300 text-blue-600 
+                    focus:ring-blue-500"
+                />
+                <span className="ml-2 text-gray-700">
+                  Enable audio announcements
+                </span>
+              </label>
+            </div>
+
+            <div className={preferences.audio.enabled ? '' : 'opacity-50'}>
               <label className="flex items-center justify-between">
                 <span className="text-gray-700">Volume</span>
                 <input
@@ -147,12 +163,16 @@ export const UserSettings: React.FC = () => {
                       volume: parseFloat(e.target.value)
                     }
                   }))}
+                  disabled={!preferences.audio.enabled}
                   className="w-64"
                 />
               </label>
+              <div className="text-right text-sm text-gray-500 mt-1">
+                {Math.round(preferences.audio.volume * 100)}%
+              </div>
             </div>
 
-            <div>
+            <div className={preferences.audio.enabled ? '' : 'opacity-50'}>
               <label className="flex items-center">
                 <input
                   type="checkbox"
@@ -164,16 +184,20 @@ export const UserSettings: React.FC = () => {
                       useCustomAudio: e.target.checked
                     }
                   }))}
+                  disabled={!preferences.audio.enabled}
                   className="rounded border-gray-300 text-blue-600 
                     focus:ring-blue-500"
                 />
                 <span className="ml-2 text-gray-700">
-                  Use custom audio for number calls
+                  Use custom phrases for number calls
                 </span>
               </label>
+              <p className="ml-6 text-sm text-gray-500">
+                e.g., "22. Two Little Ducks" instead of just "22"
+              </p>
             </div>
 
-            <div>
+            <div className={preferences.audio.enabled ? '' : 'opacity-50'}>
               <label className="flex items-center justify-between">
                 <span className="text-gray-700">Number call delay (seconds)</span>
                 <input
@@ -188,6 +212,7 @@ export const UserSettings: React.FC = () => {
                       numberCallDelay: parseInt(e.target.value)
                     }
                   }))}
+                  disabled={!preferences.audio.enabled}
                   className="w-20 rounded-md border-gray-300 shadow-sm
                     focus:border-blue-500 focus:ring-blue-500"
                 />
@@ -244,6 +269,27 @@ export const UserSettings: React.FC = () => {
                 />
               </label>
             </div>
+
+            <div>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={preferences.gameDefaults.autoStartNumberCalling}
+                  onChange={e => setPreferences(prev => ({
+                    ...prev,
+                    gameDefaults: {
+                      ...prev.gameDefaults,
+                      autoStartNumberCalling: e.target.checked
+                    }
+                  }))}
+                  className="rounded border-gray-300 text-blue-600 
+                    focus:ring-blue-500"
+                />
+                <span className="ml-2 text-gray-700">
+                  Auto-start number calling when game begins
+                </span>
+              </label>
+            </div>
           </div>
         </section>
 
@@ -270,6 +316,9 @@ export const UserSettings: React.FC = () => {
                 />
                 <span className="ml-2 text-gray-700">Enable dark mode</span>
               </label>
+              <p className="ml-6 text-sm text-gray-500">
+                Dark mode is coming soon
+              </p>
             </div>
 
             <div>
@@ -289,56 +338,31 @@ export const UserSettings: React.FC = () => {
                 />
                 <span className="ml-2 text-gray-700">Use compact view</span>
               </label>
-            </div>
-          </div>
-        </section>
-
-        {/* Notification Settings */}
-        <section>
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
-            Notification Settings
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={preferences.notifications.enableDesktop}
-                  onChange={e => setPreferences(prev => ({
-                    ...prev,
-                    notifications: {
-                      ...prev.notifications,
-                      enableDesktop: e.target.checked
-                    }
-                  }))}
-                  className="rounded border-gray-300 text-blue-600 
-                    focus:ring-blue-500"
-                />
-                <span className="ml-2 text-gray-700">
-                  Enable desktop notifications
-                </span>
-              </label>
+              <p className="ml-6 text-sm text-gray-500">
+                Show more information in less space
+              </p>
             </div>
 
             <div>
               <label className="flex items-center">
                 <input
                   type="checkbox"
-                  checked={preferences.notifications.winClaimAlert}
+                  checked={preferences.interface.showAnimations}
                   onChange={e => setPreferences(prev => ({
                     ...prev,
-                    notifications: {
-                      ...prev.notifications,
-                      winClaimAlert: e.target.checked
+                    interface: {
+                      ...prev.interface,
+                      showAnimations: e.target.checked
                     }
                   }))}
                   className="rounded border-gray-300 text-blue-600 
                     focus:ring-blue-500"
                 />
-                <span className="ml-2 text-gray-700">
-                  Alert on win claims
-                </span>
+                <span className="ml-2 text-gray-700">Show animations</span>
               </label>
+              <p className="ml-6 text-sm text-gray-500">
+                Enable smooth transitions and animations
+              </p>
             </div>
           </div>
         </section>
@@ -348,8 +372,8 @@ export const UserSettings: React.FC = () => {
           {message && (
             <div className={`mb-4 p-4 rounded-md ${
               message.type === 'success' 
-                ? 'bg-green-50 text-green-800' 
-                : 'bg-red-50 text-red-800'
+                ? 'bg-green-50 text-green-800 border border-green-200' 
+                : 'bg-red-50 text-red-800 border border-red-200'
             }`}>
               {message.text}
             </div>
@@ -367,7 +391,7 @@ export const UserSettings: React.FC = () => {
               }
             `}
           >
-            {isSaving ? 'Saving...' : 'Save Settings'}
+            {isSaving ? 'Saving Settings...' : 'Save Settings'}
           </button>
         </div>
       </div>
