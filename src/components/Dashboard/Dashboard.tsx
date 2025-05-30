@@ -1,9 +1,7 @@
-// src/components/Dashboard/Dashboard.tsx
-
+// src/components/Dashboard/Dashboard.tsx - Updated
 import { useState, useEffect } from 'react';
-import { ref, onValue, set, get } from 'firebase/database';
-import { database } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { GameDatabaseService } from '../../services/GameDatabaseService';
 import DashboardHeader from './DashboardHeader';
 import GameSetup from './GamePhases/GameSetup/GameSetup';
 import BookingPhase from './GamePhases/BookingPhase/BookingPhase';
@@ -12,7 +10,6 @@ import { LoadingSpinner } from '@components';
 import { Game, GAME_PHASES, GAME_STATUSES } from '../../types/game';
 import SubscriptionExpiredPrompt from './SubscriptionExpiredPrompt';
 
-// Define default values to avoid type errors
 const DEFAULT_PRIZES: Game.Settings['prizes'] = {
   quickFive: true,
   topLine: true,
@@ -67,43 +64,50 @@ function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [isInitializingGame, setIsInitializingGame] = useState(false);
 
+  const databaseService = GameDatabaseService.getInstance();
+
   useEffect(() => {
     if (!currentUser?.uid) return;
 
-    const gameRef = ref(database, `hosts/${currentUser.uid}/currentGame`);
-    
-    const unsubscribe = onValue(gameRef, (snapshot) => {
-      setIsLoading(true);
-      try {
-        const gameData = snapshot.val();
-        console.log('Current game data:', gameData);
-        if (gameData) {
-          // Ensure gameState exists with a valid phase
-          if (!gameData.gameState || !gameData.gameState.phase) {
-            gameData.gameState = { ...DEFAULT_GAME_STATE };
-          }
-          
-          // Ensure settings are complete
-          if (!gameData.settings) {
-            gameData.settings = { ...DEFAULT_SETTINGS };
-          } else if (!gameData.settings.prizes) {
-            gameData.settings.prizes = { ...DEFAULT_PRIZES };
-          }
-          
-          // Ensure numberSystem is complete
-          if (!gameData.numberSystem) {
-            gameData.numberSystem = { ...DEFAULT_NUMBER_SYSTEM };
-          }
+    const unsubscribe = databaseService.subscribeToCurrentGame(
+      currentUser.uid,
+      (gameData, error) => {
+        setIsLoading(true);
+        
+        if (error) {
+          console.error('Error loading game data:', error);
+          setError('Error loading game data');
+          setIsLoading(false);
+          return;
         }
-        setCurrentGame(gameData);
-        setError(null);
-      } catch (err) {
-        console.error('Error loading game data:', err);
-        setError('Error loading game data');
-      } finally {
-        setIsLoading(false);
+
+        try {
+          if (gameData) {
+            if (!gameData.gameState || !gameData.gameState.phase) {
+              gameData.gameState = { ...DEFAULT_GAME_STATE };
+            }
+            
+            if (!gameData.settings) {
+              gameData.settings = { ...DEFAULT_SETTINGS };
+            } else if (!gameData.settings.prizes) {
+              gameData.settings.prizes = { ...DEFAULT_PRIZES };
+            }
+            
+            if (!gameData.numberSystem) {
+              gameData.numberSystem = { ...DEFAULT_NUMBER_SYSTEM };
+            }
+          }
+          
+          setCurrentGame(gameData);
+          setError(null);
+        } catch (err) {
+          console.error('Error processing game data:', err);
+          setError('Error processing game data');
+        } finally {
+          setIsLoading(false);
+        }
       }
-    });
+    );
 
     return () => unsubscribe();
   }, [currentUser?.uid]);
@@ -111,7 +115,6 @@ function Dashboard() {
   const initializeNewGame = async () => {
     if (!currentUser?.uid) return;
     
-    // Check if subscription is valid
     if (!isSubscriptionValid) {
       setError('Your subscription has expired. Please renew your subscription to create new games.');
       return;
@@ -119,31 +122,23 @@ function Dashboard() {
     
     setIsInitializingGame(true);
     try {
-      // Try to load default settings
       let gameSettings = DEFAULT_SETTINGS;
       
-      const defaultSettingsRef = ref(database, `hosts/${currentUser.uid}/defaultSettings`);
-      const snapshot = await get(defaultSettingsRef);
-      
-      if (snapshot.exists()) {
-        // Use stored default settings
+      const defaultSettings = await databaseService.getDefaultSettings(currentUser.uid);
+      if (defaultSettings) {
         console.log('Using default settings from previous game');
-        gameSettings = snapshot.val();
+        gameSettings = defaultSettings;
         
-        // Ensure prizes property exists
         if (!gameSettings.prizes) {
           gameSettings.prizes = DEFAULT_PRIZES;
         }
         
-        // Ensure maxTickets property exists
         if (!gameSettings.maxTickets) {
           gameSettings.maxTickets = 90;
         }
       }
       
-      const gameRef = ref(database, `hosts/${currentUser.uid}/currentGame`);
-      
-      const newGame = {
+      const newGame: Game.CurrentGame = {
         settings: gameSettings,
         gameState: DEFAULT_GAME_STATE,
         numberSystem: DEFAULT_NUMBER_SYSTEM,
@@ -154,8 +149,9 @@ function Dashboard() {
         }
       };
 
-      await set(gameRef, newGame);
+      await databaseService.setCurrentGame(currentUser.uid, newGame);
       setError(null);
+      
     } catch (err) {
       console.error('Error initializing game:', err);
       setError('Failed to initialize new game');
@@ -172,7 +168,6 @@ function Dashboard() {
     const phase = currentGame.gameState.phase;
     console.log('Rendering phase:', phase);
 
-    // Type assertion to fix prop passing issues
     const typedGame = currentGame as Game.CurrentGame;
 
     switch (phase) {
@@ -181,10 +176,8 @@ function Dashboard() {
       case GAME_PHASES.BOOKING:
         return <BookingPhase currentGame={typedGame} />;
       case GAME_PHASES.PLAYING:
-        // Pass all required props to PlayingPhase
         return <PlayingPhase currentGame={typedGame} />;
       default:
-        // If phase is invalid or 4 (completed), show the "Start New Game" option
         return (
           <div className="text-center py-12">
             <h2 className="text-2xl font-semibold text-gray-900">
@@ -250,6 +243,12 @@ function Dashboard() {
             ) : (
               <SubscriptionExpiredPrompt />
             )}
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-4 bg-red-50 border border-red-200 rounded-md p-4 text-red-700">
+            {error}
           </div>
         )}
       </main>
