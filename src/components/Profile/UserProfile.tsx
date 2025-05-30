@@ -1,13 +1,11 @@
-// src/components/Profile/UserProfile.tsx
-
+// src/components/Profile/UserProfile.tsx - Updated
 import React, { useState, useEffect } from 'react';
-import { ref, get, update } from 'firebase/database';
 import { updateEmail, updatePassword, reauthenticateWithCredential, 
   EmailAuthProvider } from 'firebase/auth';
-import { database } from '@lib/firebase';
 import { useAuth } from '@contexts';
 import { LoadingSpinner } from '@components';
 import { handleApiError } from '@utils/errorHandler';
+import { FirebaseUtils } from '../../utils/firebaseUtils';
 
 interface ProfileData {
   username: string;
@@ -33,6 +31,8 @@ export const UserProfile: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const firebaseUtils = FirebaseUtils.getInstance();
+
   useEffect(() => {
     loadProfileData();
   }, []);
@@ -41,12 +41,11 @@ export const UserProfile: React.FC = () => {
     if (!currentUser?.uid) return;
 
     try {
-      const profileRef = ref(database, `hosts/${currentUser.uid}/profile`);
-      const snapshot = await get(profileRef);
+      const result = await firebaseUtils.readData<any>(currentUser.uid, 'profile');
       
-      if (snapshot.exists()) {
-        setProfileData(snapshot.val());
-        setEditData(snapshot.val());
+      if (result.success && result.data) {
+        setProfileData(result.data);
+        setEditData(result.data);
       }
     } catch (error) {
       console.error('Error loading profile:', error);
@@ -62,17 +61,21 @@ export const UserProfile: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      const updates: Record<string, any> = {};
-
-      // Update profile data
-      updates[`hosts/${currentUser.uid}/profile`] = {
+      const updatedProfile = {
         ...profileData,
         ...editData,
         lastUpdated: Date.now()
       };
 
-      await update(ref(database), updates);
-      setProfileData(prev => ({ ...prev, ...editData } as ProfileData));
+      const result = await firebaseUtils.updateData(currentUser.uid, {
+        profile: updatedProfile
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update profile');
+      }
+
+      setProfileData(updatedProfile as ProfileData);
       setIsEditing(false);
       setSuccessMessage('Profile updated successfully');
     } catch (error) {
@@ -94,14 +97,12 @@ export const UserProfile: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      // Reauthenticate user before password change
       const credential = EmailAuthProvider.credential(
         currentUser.email!,
         currentPassword
       );
       await reauthenticateWithCredential(currentUser, credential);
       
-      // Update password
       await updatePassword(currentUser, newPassword);
       setIsChangingPassword(false);
       setSuccessMessage('Password updated successfully');
@@ -121,14 +122,12 @@ export const UserProfile: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      // Reauthenticate user before email change
       const credential = EmailAuthProvider.credential(
         currentUser.email!,
         password
       );
       await reauthenticateWithCredential(currentUser, credential);
       
-      // Update email
       await updateEmail(currentUser, newEmail);
       setSuccessMessage('Email updated successfully');
     } catch (error) {
@@ -153,7 +152,6 @@ export const UserProfile: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-      {/* Profile Header */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex justify-between items-start">
           <div>
@@ -190,7 +188,6 @@ export const UserProfile: React.FC = () => {
           </div>
         )}
 
-        {/* Profile Form */}
         <div className="mt-6 space-y-6">
           <div className="grid grid-cols-1 gap-6">
             <div>
@@ -294,7 +291,6 @@ export const UserProfile: React.FC = () => {
         </div>
       </div>
 
-      {/* Subscription Details */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h3 className="text-lg font-medium text-gray-900">
           Subscription Details
@@ -357,7 +353,6 @@ export const UserProfile: React.FC = () => {
         </div>
       </div>
 
-      {/* Security Settings */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h3 className="text-lg font-medium text-gray-900">
           Security Settings
@@ -499,145 +494,6 @@ const PasswordChangeForm: React.FC<PasswordChangeFormProps> = ({
         </button>
       </div>
     </form>
-  );
-};
-
-interface SubscriptionStatusProps {
-  subscriptionDetails: {
-    plan: string;
-    startDate: number;
-    endDate: number;
-    status: 'active' | 'expired' | 'pending';
-    features: string[];
-  };
-  onRenew: () => void;
-}
-
-export const SubscriptionStatus: React.FC<SubscriptionStatusProps> = ({
-  subscriptionDetails,
-  onRenew
-}) => {
-  const daysRemaining = Math.ceil(
-    (subscriptionDetails.endDate - Date.now()) / (1000 * 60 * 60 * 24)
-  );
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return {
-          bg: 'bg-green-100',
-          text: 'text-green-800',
-          border: 'border-green-200'
-        };
-      case 'expired':
-        return {
-          bg: 'bg-red-100',
-          text: 'text-red-800',
-          border: 'border-red-200'
-        };
-      case 'pending':
-        return {
-          bg: 'bg-yellow-100',
-          text: 'text-yellow-800',
-          border: 'border-yellow-200'
-        };
-      default:
-        return {
-          bg: 'bg-gray-100',
-          text: 'text-gray-800',
-          border: 'border-gray-200'
-        };
-    }
-  };
-
-  const statusColors = getStatusColor(subscriptionDetails.status);
-
-  return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <div className="flex justify-between items-start">
-        <div>
-          <h3 className="text-lg font-medium text-gray-900">
-            Subscription Status
-          </h3>
-          <p className="mt-1 text-sm text-gray-600">
-            Current plan and subscription details
-          </p>
-        </div>
-        
-        <span className={`px-3 py-1 rounded-full text-sm font-medium
-          ${statusColors.bg} ${statusColors.text}`}
-        >
-          {subscriptionDetails.status}
-        </span>
-      </div>
-
-      <div className="mt-6 space-y-4">
-        <div className="flex justify-between items-center py-3 border-b">
-          <span className="text-sm text-gray-600">Current Plan</span>
-          <span className="text-sm font-medium text-gray-900">
-            {subscriptionDetails.plan}
-          </span>
-        </div>
-
-        <div className="flex justify-between items-center py-3 border-b">
-          <span className="text-sm text-gray-600">Days Remaining</span>
-          <span className="text-sm font-medium text-gray-900">
-            {daysRemaining > 0 ? daysRemaining : 0} days
-          </span>
-        </div>
-
-        <div className="flex justify-between items-center py-3 border-b">
-          <span className="text-sm text-gray-600">Start Date</span>
-          <span className="text-sm font-medium text-gray-900">
-            {new Date(subscriptionDetails.startDate).toLocaleDateString()}
-          </span>
-        </div>
-
-        <div className="flex justify-between items-center py-3 border-b">
-          <span className="text-sm text-gray-600">End Date</span>
-          <span className="text-sm font-medium text-gray-900">
-            {new Date(subscriptionDetails.endDate).toLocaleDateString()}
-          </span>
-        </div>
-
-        <div className="pt-4">
-          <h4 className="text-sm font-medium text-gray-900 mb-3">
-            Included Features
-          </h4>
-          <ul className="space-y-2">
-            {subscriptionDetails.features.map((feature, index) => (
-              <li key={index} className="flex items-center text-sm text-gray-600">
-                <svg
-                  className="h-5 w-5 text-green-500 mr-2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path d="M5 13l4 4L19 7" />
-                </svg>
-                {feature}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {subscriptionDetails.status !== 'active' && (
-          <div className="pt-6">
-            <button
-              onClick={onRenew}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md
-                hover:bg-blue-700 focus:outline-none focus:ring-2
-                focus:ring-blue-500 focus:ring-offset-2"
-            >
-              Renew Subscription
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
   );
 };
 
