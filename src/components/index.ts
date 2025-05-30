@@ -1,18 +1,17 @@
-/**
- * Components index file - Minimalist Version
- * 
- * This version only includes components with verified paths
- * to resolve immediate import issues.
- */
+// src/components/index.ts - Cleaned up version removing deleted components
+
 // Common UI Components
 export { default as LoadingSpinner } from './LoadingSpinner';
-export { ErrorBoundary } from './Common/ErrorBoundary';
+export { ErrorBoundary } from './Common/ErrorBoundary'; // Keeping only one error boundary
 export { default as Toast } from './Common/Toast';
 export { default as GameControls } from './GameControls';
-export { default as SubscriptionPage } from './Auth/SubscriptionPage';
 
-// Main Layout
+// Layout
 export { default as MainLayout } from './Layouts/MainLayout';
+
+// Auth components
+export { default as Login } from './Auth/Login';
+export { default as SubscriptionPage } from './Auth/SubscriptionPage';
 
 // Dashboard components
 export { default as Dashboard } from './Dashboard/Dashboard';
@@ -22,10 +21,9 @@ export { default as BookingPhase } from './Dashboard/GamePhases/BookingPhase/Boo
 export { default as PlayingPhase } from './Dashboard/GamePhases/PlayingPhase/PlayingPhase';
 export { default as PlayingPhaseView } from './Dashboard/GamePhases/PlayingPhase/PlayingPhaseView';
 export { default as NumberBoard } from './Dashboard/GamePhases/PlayingPhase/components/NumberBoard';
-export { default as WinnerDisplay } from './Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay';
+export { default as WinnerDisplay } from './Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay'; // Removed SafeWinnerDisplay
 
-// Auth and user components
-export { default as Login } from './Auth/Login';
+// User components
 export { default as UserProfile } from './Profile/UserProfile';
 export { default as UserSettings } from './Settings/UserSettings';
 export { default as SessionHistory } from './History/SessionHistory';
