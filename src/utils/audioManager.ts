@@ -1,105 +1,6 @@
-// src/utils/audioManager.ts
+// src/utils/audioManager.ts - Simplified and consolidated version
 
 import { Game } from '../types/game';
-
-interface NumberCall {
-  phrase: string;
-  description: string;
-}
-
-// Number calls dictionary
-const numberCalls: Record<number, NumberCall> = {
-  1: { phrase: "Kelly's Eye", description: "Number 1" },
-  2: { phrase: "One Little Duck", description: "Number 2" },
-  3: { phrase: "Cup of Tea", description: "Number 3" },
-  4: { phrase: "Knock at the Door", description: "Number 4" },
-  5: { phrase: "Man Alive", description: "Number 5" },
-  6: { phrase: "Half a Dozen", description: "Number 6" },
-  7: { phrase: "Lucky Seven", description: "Number 7" },
-  8: { phrase: "Garden Gate", description: "Number 8" },
-  9: { phrase: "Doctor's Orders", description: "Number 9" },
-  10: { phrase: "Cameron's Den", description: "Number 10" },
-  11: { phrase: "Legs Eleven", description: "Number 11" },
-  12: { phrase: "One Dozen", description: "Number 12" },
-  13: { phrase: "Unlucky for Some", description: "Number 13" },
-  14: { phrase: "Valentine's Day", description: "Number 14" },
-  15: { phrase: "Young and Keen", description: "Number 15" },
-  16: { phrase: "Sweet Sixteen", description: "Number 16" },
-  17: { phrase: "Dancing Queen", description: "Number 17" },
-  18: { phrase: "Coming of Age", description: "Number 18" },
-  19: { phrase: "Goodbye Teens", description: "Number 19" },
-  20: { phrase: "One Score", description: "Number 20" },
-  21: { phrase: "Key of the Door", description: "Number 21" },
-  22: { phrase: "Two Little Ducks", description: "Number 22" },
-  23: { phrase: "Thee and Me", description: "Number 23" },
-  24: { phrase: "Two Dozen", description: "Number 24" },
-  25: { phrase: "Duck and Dive", description: "Number 25" },
-  26: { phrase: "Half a Crown", description: "Number 26" },
-  27: { phrase: "Duck and a Crutch", description: "Number 27" },
-  28: { phrase: "In a State", description: "Number 28" },
-  29: { phrase: "Rise and Shine", description: "Number 29" },
-  30: { phrase: "Dirty Gertie", description: "Number 30" },
-  31: { phrase: "Get Up and Run", description: "Number 31" },
-  32: { phrase: "Buckle My Shoe", description: "Number 32" },
-  33: { phrase: "All the Threes", description: "Number 33" },
-  34: { phrase: "Ask for More", description: "Number 34" },
-  35: { phrase: "Jump and Jive", description: "Number 35" },
-  36: { phrase: "Three Dozen", description: "Number 36" },
-  37: { phrase: "More than Eleven", description: "Number 37" },
-  38: { phrase: "Christmas Cake", description: "Number 38" },
-  39: { phrase: "Steps", description: "Number 39" },
-  40: { phrase: "Life Begins", description: "Number 40" },
-  41: { phrase: "Time for Fun", description: "Number 41" },
-  42: { phrase: "Winnie the Pooh", description: "Number 42" },
-  43: { phrase: "Down on Your Knees", description: "Number 43" },
-  44: { phrase: "Droopy Drawers", description: "Number 44" },
-  45: { phrase: "Halfway There", description: "Number 45" },
-  46: { phrase: "Up to Tricks", description: "Number 46" },
-  47: { phrase: "Four and Seven", description: "Number 47" },
-  48: { phrase: "Four Dozen", description: "Number 48" },
-  49: { phrase: "PC", description: "Number 49" },
-  50: { phrase: "Half a Century", description: "Number 50" },
-  51: { phrase: "Tweak of the Thumb", description: "Number 51" },
-  52: { phrase: "Danny La Rue", description: "Number 52" },
-  53: { phrase: "Stuck in the Tree", description: "Number 53" },
-  54: { phrase: "Clean the Floor", description: "Number 54" },
-  55: { phrase: "Snakes Alive", description: "Number 55" },
-  56: { phrase: "Was She Worth It", description: "Number 56" },
-  57: { phrase: "Heinz Variety", description: "Number 57" },
-  58: { phrase: "Make Them Wait", description: "Number 58" },
-  59: { phrase: "Brighton Line", description: "Number 59" },
-  60: { phrase: "Five Dozen", description: "Number 60" },
-  61: { phrase: "Baker's Bun", description: "Number 61" },
-  62: { phrase: "Turn the Screw", description: "Number 62" },
-  63: { phrase: "Tickle Me", description: "Number 63" },
-  64: { phrase: "Red Raw", description: "Number 64" },
-  65: { phrase: "Old Age Pension", description: "Number 65" },
-  66: { phrase: "Clickety Click", description: "Number 66" },
-  67: { phrase: "Stairway to Heaven", description: "Number 67" },
-  68: { phrase: "Saving Grace", description: "Number 68" },
-  69: { phrase: "Either Way Up", description: "Number 69" },
-  70: { phrase: "Three Score and Ten", description: "Number 70" },
-  71: { phrase: "Bang on the Drum", description: "Number 71" },
-  72: { phrase: "Six Dozen", description: "Number 72" },
-  73: { phrase: "Queen Bee", description: "Number 73" },
-  74: { phrase: "Hit the Floor", description: "Number 74" },
-  75: { phrase: "Strive and Strive", description: "Number 75" },
-  76: { phrase: "Trombones", description: "Number 76" },
-  77: { phrase: "Sunset Strip", description: "Number 77" },
-  78: { phrase: "Heaven's Gate", description: "Number 78" },
-  79: { phrase: "One More Time", description: "Number 79" },
-  80: { phrase: "Gandhi's Breakfast", description: "Number 80" },
-  81: { phrase: "Fat Lady with a Walking Stick", description: "Number 81" },
-  82: { phrase: "Straight On Through", description: "Number 82" },
-  83: { phrase: "Time for Tea", description: "Number 83" },
-  84: { phrase: "Seven Dozen", description: "Number 84" },
-  85: { phrase: "Staying Alive", description: "Number 85" },
-  86: { phrase: "Between the Sticks", description: "Number 86" },
-  87: { phrase: "Torquay in Devon", description: "Number 87" },
-  88: { phrase: "Two Fat Ladies", description: "Number 88" },
-  89: { phrase: "Nearly There", description: "Number 89" },
-  90: { phrase: "Top of the Shop", description: "Number 90" }
-};
 
 interface AudioSettings {
   volume: number;
@@ -107,16 +8,40 @@ interface AudioSettings {
   pitch: number;
   language: string;
   useCustomAudio: boolean;
-  callDelay: number;
+  enabled: boolean;
 }
+
+const numberCalls: Record<number, string> = {
+  1: "Kelly's Eye", 2: "One Little Duck", 3: "Cup of Tea", 4: "Knock at the Door",
+  5: "Man Alive", 6: "Half a Dozen", 7: "Lucky Seven", 8: "Garden Gate",
+  9: "Doctor's Orders", 10: "Cameron's Den", 11: "Legs Eleven", 12: "One Dozen",
+  13: "Unlucky for Some", 14: "Valentine's Day", 15: "Young and Keen", 16: "Sweet Sixteen",
+  17: "Dancing Queen", 18: "Coming of Age", 19: "Goodbye Teens", 20: "One Score",
+  21: "Key of the Door", 22: "Two Little Ducks", 23: "Thee and Me", 24: "Two Dozen",
+  25: "Duck and Dive", 26: "Half a Crown", 27: "Duck and a Crutch", 28: "In a State",
+  29: "Rise and Shine", 30: "Dirty Gertie", 31: "Get Up and Run", 32: "Buckle My Shoe",
+  33: "All the Threes", 34: "Ask for More", 35: "Jump and Jive", 36: "Three Dozen",
+  37: "More than Eleven", 38: "Christmas Cake", 39: "Steps", 40: "Life Begins",
+  41: "Time for Fun", 42: "Winnie the Pooh", 43: "Down on Your Knees", 44: "Droopy Drawers",
+  45: "Halfway There", 46: "Up to Tricks", 47: "Four and Seven", 48: "Four Dozen",
+  49: "PC", 50: "Half a Century", 51: "Tweak of the Thumb", 52: "Danny La Rue",
+  53: "Stuck in the Tree", 54: "Clean the Floor", 55: "Snakes Alive", 56: "Was She Worth It",
+  57: "Heinz Variety", 58: "Make Them Wait", 59: "Brighton Line", 60: "Five Dozen",
+  61: "Baker's Bun", 62: "Turn the Screw", 63: "Tickle Me", 64: "Red Raw",
+  65: "Old Age Pension", 66: "Clickety Click", 67: "Stairway to Heaven", 68: "Saving Grace",
+  69: "Either Way Up", 70: "Three Score and Ten", 71: "Bang on the Drum", 72: "Six Dozen",
+  73: "Queen Bee", 74: "Hit the Floor", 75: "Strive and Strive", 76: "Trombones",
+  77: "Sunset Strip", 78: "Heaven's Gate", 79: "One More Time", 80: "Gandhi's Breakfast",
+  81: "Fat Lady with a Walking Stick", 82: "Straight On Through", 83: "Time for Tea",
+  84: "Seven Dozen", 85: "Staying Alive", 86: "Between the Sticks", 87: "Torquay in Devon",
+  88: "Two Fat Ladies", 89: "Nearly There", 90: "Top of the Shop"
+};
 
 export class AudioManager {
   private static instance: AudioManager;
   private settings: AudioSettings;
   private synthesizer: SpeechSynthesis;
-  private audioContext: AudioContext | null;
-  private isPlaying: boolean;
-  private queue: Array<() => Promise<void>>;
+  private audioContext: AudioContext | null = null;
   
   private constructor() {
     this.settings = {
@@ -125,28 +50,9 @@ export class AudioManager {
       pitch: 1.0,
       language: 'en-US',
       useCustomAudio: true,
-      callDelay: 5000
+      enabled: true
     };
-    
     this.synthesizer = window.speechSynthesis;
-    this.audioContext = null;
-    this.isPlaying = false;
-    this.queue = [];
-    
-    // Initialize Web Audio API context on user interaction
-    document.addEventListener('click', () => {
-      if (!this.audioContext) {
-        this.initializeAudioContext();
-      }
-    }, { once: true });
-  }
-  
-  private initializeAudioContext(): void {
-    try {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    } catch (error) {
-      console.error('Could not create AudioContext:', error);
-    }
   }
   
   public static getInstance(): AudioManager {
@@ -157,224 +63,101 @@ export class AudioManager {
   }
   
   public initialize(): Promise<void> {
-    return new Promise((resolve) => {
-      // Pre-warm the speech synthesis
-      this.synthesizer.cancel();
-      
-      // Try to create AudioContext early
-      try {
-        this.initializeAudioContext();
-      } catch (error) {
-        console.warn('AudioContext creation deferred until user interaction');
-      }
-      
-      resolve();
-    });
+    this.synthesizer.cancel();
+    return Promise.resolve();
   }
   
   public async announceNumber(number: number): Promise<void> {
-    if (this.isPlaying) {
-      return new Promise((resolve) => {
-        this.queue.push(async () => {
-          await this.doAnnounceNumber(number);
-          resolve();
-        });
-      });
+    if (!this.settings.enabled) return;
+    
+    let text = number.toString();
+    if (this.settings.useCustomAudio && numberCalls[number]) {
+      text = `${number}. ${numberCalls[number]}`;
     }
     
-    return this.doAnnounceNumber(number);
-  }
-  
-  private async doAnnounceNumber(number: number): Promise<void> {
-    this.isPlaying = true;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.volume = this.settings.volume;
+    utterance.rate = this.settings.rate;
+    utterance.pitch = this.settings.pitch;
+    utterance.lang = this.settings.language;
     
-    return new Promise<void>((resolve) => {
-      let text = number.toString();
-      
-      // Use phrase if available and custom audio enabled
-      if (this.settings.useCustomAudio && numberCalls[number]) {
-        text = `${number}. ${numberCalls[number].phrase}, ${numberCalls[number].description}`;
-      }
-      
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      // Apply settings
-      utterance.volume = this.settings.volume;
-      utterance.rate = this.settings.rate;
-      utterance.pitch = this.settings.pitch;
-      utterance.lang = this.settings.language;
-      
-      utterance.onend = () => {
-        this.isPlaying = false;
-        
-        // Process queue
-        if (this.queue.length > 0) {
-          const nextAnnouncement = this.queue.shift();
-          if (nextAnnouncement) {
-            nextAnnouncement().catch(error => {
-              console.error('Error processing queued announcement:', error);
-            });
-          }
-        }
-        
-        resolve();
-      };
-      
-      utterance.onerror = (event) => {
-        console.error('Speech synthesis error:', event);
-        this.isPlaying = false;
-        resolve();
-      };
-      
-      this.synthesizer.speak(utterance);
-    });
+    this.synthesizer.speak(utterance);
   }
   
   public async playEffect(effectName: string): Promise<void> {
-    // Check if it's a prize win effect
-    const prizeWinMatch = effectName.match(/^(quickFive|topLine|middleLine|bottomLine|corners|starCorners|halfSheet|fullSheet|fullHouse|secondFullHouse)Win$/);
+    if (!this.settings.enabled) return;
     
-    if (prizeWinMatch) {
-      return this.playPrizeWinEffect(prizeWinMatch[1] as keyof Game.Winners);
-    }
+    this.createAudioContext();
+    if (!this.audioContext) return;
     
-    // Otherwise, fall back to the original implementation
-    let soundType: 'success' | 'error' | 'notification' = 'notification';
+    let frequency = 440; // Default A4
+    let duration = 0.2;
     
+    // Different sounds for different effects
     if (effectName.includes('Win')) {
-      soundType = 'success';
+      frequency = 880; // Higher for wins
+      duration = 0.3;
     } else if (effectName.includes('Error')) {
-      soundType = 'error';
+      frequency = 220; // Lower for errors
+      duration = 0.3;
     }
     
-    return this.playSound(soundType);
-  }
-
-  public async playPrizeWinEffect(prizeType: keyof Game.Winners): Promise<void> {
-    if (!this.audioContext) {
-      this.initializeAudioContext();
-      if (!this.audioContext) {
-        return Promise.resolve();
-      }
-    }
+    const oscillator = this.audioContext.createOscillator();
+    const gainNode = this.audioContext.createGain();
     
-    return new Promise((resolve) => {
-      // Configure different sounds for different prize types
-      let pattern: number[][] = []; // frequency and duration pairs
-      
-      // Configure distinctive patterns for each prize type
-      switch (prizeType) {
-        case 'quickFive':
-          pattern = [[440, 0.1], [523, 0.1], [659, 0.1], [784, 0.1], [880, 0.3]];
-          break;
-        case 'topLine':
-        case 'middleLine':
-        case 'bottomLine':
-          pattern = [[440, 0.1], [523, 0.1], [659, 0.3]];
-          break;
-        case 'corners':
-        case 'starCorners':
-          pattern = [[523, 0.1], [659, 0.1], [784, 0.1], [880, 0.3]];
-          break;
-        case 'halfSheet':
-          pattern = [[440, 0.1], [523, 0.1], [659, 0.1], [784, 0.1], [880, 0.1], [1047, 0.3]];
-          break;
-        case 'fullSheet':
-          pattern = [[523, 0.1], [659, 0.1], [784, 0.1], [880, 0.1], [1047, 0.1], [1319, 0.3]];
-          break;
-        case 'fullHouse':
-          pattern = [[440, 0.1], [523, 0.1], [659, 0.1], [784, 0.1], [880, 0.1], [1047, 0.1], [1319, 0.3]];
-          break;
-        case 'secondFullHouse':
-          pattern = [[1319, 0.1], [1047, 0.1], [880, 0.1], [784, 0.1], [659, 0.1], [523, 0.1], [440, 0.3]];
-          break;
-        default:
-          // Default celebratory pattern
-          pattern = [[440, 0.1], [659, 0.1], [880, 0.3]];
-      }
-      
-      // Create a sequence of oscillators for the pattern
-      let startTime = this.audioContext!.currentTime;
-      
-      pattern.forEach(([freq, dur]) => {
-        const oscillator = this.audioContext!.createOscillator();
-        const gainNode = this.audioContext!.createGain();
-        
-        oscillator.frequency.value = freq;
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext!.destination);
-        
-        // Apply volume setting and envelope
-        gainNode.gain.setValueAtTime(0, startTime);
-        gainNode.gain.linearRampToValueAtTime(0.2 * this.settings.volume, startTime + 0.01);
-        gainNode.gain.linearRampToValueAtTime(0, startTime + dur);
-        
-        oscillator.start(startTime);
-        oscillator.stop(startTime + dur);
-        
-        startTime += dur;
-      });
-      
-      // Add a bit of extra time to ensure playback completes
-      setTimeout(resolve, (startTime - this.audioContext!.currentTime) * 1000 + 100);
-    });
+    oscillator.connect(gainNode);
+    gainNode.connect(this.audioContext.destination);
+    
+    oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0.1 * this.settings.volume, this.audioContext.currentTime);
+    
+    oscillator.start();
+    oscillator.stop(this.audioContext.currentTime + duration);
   }
   
-  public async playSound(soundType: 'success' | 'error' | 'notification'): Promise<void> {
-    if (!this.audioContext) {
-      this.initializeAudioContext();
-      if (!this.audioContext) {
-        return Promise.resolve();
-      }
-    }
+  public async playPrizeWinEffect(prizeType: keyof Game.Winners): Promise<void> {
+    if (!this.settings.enabled) return;
     
-    return new Promise((resolve) => {
+    this.createAudioContext();
+    if (!this.audioContext) return;
+    
+    // Different patterns for different prizes
+    const patterns: Record<string, number[][]> = {
+      quickFive: [[440, 0.1], [523, 0.1], [659, 0.3]],
+      fullHouse: [[440, 0.1], [523, 0.1], [659, 0.1], [784, 0.1], [880, 0.3]],
+      default: [[440, 0.1], [659, 0.1], [880, 0.3]]
+    };
+    
+    const pattern = patterns[prizeType] || patterns.default;
+    
+    let startTime = this.audioContext.currentTime;
+    pattern.forEach(([freq, dur]) => {
       const oscillator = this.audioContext!.createOscillator();
       const gainNode = this.audioContext!.createGain();
       
+      oscillator.frequency.value = freq;
       oscillator.connect(gainNode);
       gainNode.connect(this.audioContext!.destination);
       
-      // Configure sound based on type
-      switch (soundType) {
-        case 'success':
-          oscillator.frequency.setValueAtTime(880, this.audioContext!.currentTime); // A5
-          gainNode.gain.setValueAtTime(0.1 * this.settings.volume, this.audioContext!.currentTime);
-          oscillator.start();
-          oscillator.stop(this.audioContext!.currentTime + 0.2);
-          break;
-          
-        case 'error':
-          oscillator.frequency.setValueAtTime(220, this.audioContext!.currentTime); // A3
-          gainNode.gain.setValueAtTime(0.1 * this.settings.volume, this.audioContext!.currentTime);
-          oscillator.start();
-          oscillator.stop(this.audioContext!.currentTime + 0.3);
-          break;
-          
-        case 'notification':
-          oscillator.frequency.setValueAtTime(440, this.audioContext!.currentTime); // A4
-          gainNode.gain.setValueAtTime(0.1 * this.settings.volume, this.audioContext!.currentTime);
-          oscillator.start();
-          oscillator.stop(this.audioContext!.currentTime + 0.1);
-          break;
-      }
+      gainNode.gain.setValueAtTime(0, startTime);
+      gainNode.gain.linearRampToValueAtTime(0.2 * this.settings.volume, startTime + 0.01);
+      gainNode.gain.linearRampToValueAtTime(0, startTime + dur);
       
-      setTimeout(resolve, 300);
+      oscillator.start(startTime);
+      oscillator.stop(startTime + dur);
+      
+      startTime += dur;
     });
   }
   
-  public getNumberCall(number: number): NumberCall | undefined {
-    return numberCalls[number];
-  }
-  
-  public formatNumberCall(number: number): string {
-    const call = numberCalls[number];
-    return call ? `${call.phrase}, ${call.description}` : `Number ${number}`;
-  }
-  
-  public getAnnouncementText(number: number): string {
-    const call = numberCalls[number];
-    return call ? `${number}. ${call.phrase}, ${call.description}` : `Number ${number}`;
+  private createAudioContext(): void {
+    if (!this.audioContext) {
+      try {
+        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      } catch (error) {
+        console.error('Could not create AudioContext:', error);
+      }
+    }
   }
   
   public updateSettings(settings: Partial<AudioSettings>): void {
@@ -389,34 +172,16 @@ export class AudioManager {
     this.settings.volume = Math.max(0, Math.min(1, volume));
   }
   
-  public setRate(rate: number): void {
-    this.settings.rate = Math.max(0.1, Math.min(2, rate));
-  }
-  
-  public setPitch(pitch: number): void {
-    this.settings.pitch = Math.max(0.1, Math.min(2, pitch));
-  }
-  
-  public setLanguage(language: string): void {
-    this.settings.language = language;
-  }
-  
-  public isSpeaking(): boolean {
-    return this.isPlaying;
+  public setEnabled(enabled: boolean): void {
+    this.settings.enabled = enabled;
   }
   
   public cancelSpeech(): void {
     this.synthesizer.cancel();
-    this.queue = [];
-    this.isPlaying = false;
   }
   
-  public pauseSpeech(): void {
-    this.synthesizer.pause();
-  }
-  
-  public resumeSpeech(): void {
-    this.synthesizer.resume();
+  public getNumberCall(number: number): string | undefined {
+    return numberCalls[number];
   }
 }
 
