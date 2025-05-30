@@ -39,10 +39,10 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
       setIsLoading(false);
     }
 
-    const loadCurrentGame = () => {
+    const loadCurrentGame = (): (() => void) => {
       if (!currentUser?.uid) {
         setIsLoading(false);
-        return;
+        return () => {}; // Return empty cleanup function
       }
 
       const unsubscribe = databaseService.subscribeToCurrentGame(
@@ -122,6 +122,7 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
         bookings: {} as Record<string, Game.Booking>,
         tickets: {} as Record<string, Partial<Game.Ticket>>,
         metrics: {
+          startTime: gameData.bookingMetrics?.startTime || timestamp,
           lastBookingTime: timestamp,
           totalBookings: (gameData.bookingMetrics?.totalBookings || 0) + selectedTickets.length,
           totalPlayers: (gameData.bookingMetrics?.totalPlayers || 0) + 1
