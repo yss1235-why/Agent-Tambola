@@ -1,6 +1,6 @@
-// src/hooks/usePrizeValidation.ts
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { PrizeValidationService } from '../services/PrizeValidationService';
+// src/hooks/usePrizeValidation.ts - Simplified version
+import { useState, useCallback } from 'react';
+import { validateAllPrizes, ValidationContext } from '../utils/prizeValidation';
 import type { Game } from '../types/game';
 import type { PrizeValidationHookReturn } from '../types/hooks';
 
@@ -18,28 +18,8 @@ export function usePrizeValidation({
   onError
 }: UsePrizeValidationProps): PrizeValidationHookReturn {
   const [isValidating, setIsValidating] = useState(false);
-  const validationServiceRef = useRef<PrizeValidationService>(PrizeValidationService.getInstance());
-  const lastValidationRef = useRef<number>(0);
-
-  // Initialize prize validation service
-  useEffect(() => {
-    if (hostId) {
-      validationServiceRef.current.initialize(hostId);
-    }
-    
-    return () => {
-      validationServiceRef.current.cleanup();
-    };
-  }, [hostId]);
 
   const validatePrizes = useCallback(async (calledNumbers: number[]): Promise<void> => {
-    // Throttle validations to prevent excessive calls
-    const now = Date.now();
-    if (now - lastValidationRef.current < 1000) {
-      return;
-    }
-    lastValidationRef.current = now;
-
     if (!gameState || !hostId || isValidating) {
       return;
     }
@@ -52,42 +32,39 @@ export function usePrizeValidation({
     setIsValidating(true);
 
     try {
-      const tickets = gameState.activeTickets?.tickets || {};
-      const bookings = gameState.activeTickets?.bookings || {};
-      const currentWinners = gameState.gameState?.winners || {
-        quickFive: [],
-        topLine: [],
-        middleLine: [],
-        bottomLine: [],
-        corners: [],
-        starCorners: [],
-        halfSheet: [],
-        fullSheet: [],
-        fullHouse: [],
-        secondFullHouse: []
+      const context: ValidationContext = {
+        tickets: gameState.activeTickets?.tickets || {},
+        bookings: gameState.activeTickets?.bookings || {},
+        calledNumbers,
+        currentWinners: gameState.gameState?.winners || {
+          quickFive: [],
+          topLine: [],
+          middleLine: [],
+          bottomLine: [],
+          corners: [],
+          starCorners: [],
+          halfSheet: [],
+          fullSheet: [],
+          fullHouse: [],
+          secondFullHouse: []
+        },
+        activePrizes: gameState.settings?.prizes || {}
       };
-      const activePrizes = gameState.settings?.prizes || {};
 
       // Only validate if there are booked tickets and active prizes
-      const hasBookedTickets = Object.keys(bookings).length > 0;
-      const hasActivePrizes = Object.values(activePrizes).some(isActive => isActive);
+      const hasBookedTickets = Object.keys(context.bookings).length > 0;
+      const hasActivePrizes = Object.values(context.activePrizes).some(isActive => isActive);
 
       if (!hasBookedTickets || !hasActivePrizes) {
         return;
       }
 
-      const validationResults = await validationServiceRef.current.validateAllPrizes(
-        tickets,
-        calledNumbers,
-        currentWinners,
-        activePrizes,
-        bookings
-      );
+      const validationResults = validateAllPrizes(context);
 
       // Process validation results and trigger callbacks
-      Object.entries(validationResults).forEach(([prizeType, result]) => {
-        if (result.isValid && result.winners.length > 0) {
-          onPrizeWon?.(prizeType as keyof Game.Winners, result.winners);
+      validationResults.forEach(result => {
+        if (result.isWinner && result.winningTickets.length > 0) {
+          onPrizeWon?.(result.prizeType, result.winningTickets);
         }
       });
 
