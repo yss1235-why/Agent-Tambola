@@ -1,4 +1,4 @@
-// src/components/History/SessionHistory.tsx
+// src/components/History/SessionHistory.tsx - Updated without deleted services
 
 import React, { useState, useEffect } from 'react';
 import { ref, get } from 'firebase/database';
@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { LoadingSpinner } from '@components';
 import { handleApiError } from '../../utils/errorHandler';
 import { Game } from '../../types/game';
-import { ReportGenerator, ExportManager } from '../../services';
+import { exportToCSV } from '../../services'; // Using simplified export function
 
 interface SessionDetails {
   id: string;
@@ -38,14 +38,12 @@ export const SessionHistory: React.FC = () => {
 
     try {
       const sessionsRef = ref(database, `hosts/${currentUser.uid}/sessions`);
-      // Use get instead of query/orderByChild/limitToLast since we'll sort the data in memory
       const snapshot = await get(sessionsRef);
 
       if (snapshot.exists()) {
         const sessionData: SessionDetails[] = [];
         const allSessions = snapshot.val();
         
-        // Convert to array and sort by date
         Object.entries(allSessions).forEach(([id, data]) => {
           sessionData.push({
             id,
@@ -53,12 +51,10 @@ export const SessionHistory: React.FC = () => {
           });
         });
         
-        // Sort by date (most recent first)
         const sortedSessions = sessionData.sort((a, b) => 
           new Date(b.date).getTime() - new Date(a.date).getTime()
         );
         
-        // Limit to last 50 sessions
         setSessions(sortedSessions.slice(0, 50));
       }
     } catch (error) {
@@ -93,12 +89,10 @@ export const SessionHistory: React.FC = () => {
   };
 
   const countPrizesAwarded = (session: any): number => {
-    // Handle the case where session.gameState might be undefined
     if (!session.gameState || !session.gameState.winners) {
       return 0;
     }
     
-    // Explicitly cast to appropriate type and calculate total winners
     let total = 0;
     const winners = session.gameState.winners;
     
@@ -140,9 +134,7 @@ export const SessionHistory: React.FC = () => {
   const handleExportSession = async (sessionId: string) => {
     try {
       setIsExporting(true);
-      const reportGenerator = ReportGenerator.getInstance();
-      const exportManager = ExportManager.getInstance();
-
+      
       const sessionRef = ref(
         database,
         `hosts/${currentUser?.uid}/sessions/${sessionId}`
@@ -150,22 +142,58 @@ export const SessionHistory: React.FC = () => {
       const snapshot = await get(sessionRef);
       
       if (snapshot.exists()) {
-        const report = await reportGenerator.generateGameReport(snapshot.val());
-        const blob = await exportManager.exportGameData(sessionId, 'excel', {
-          includePlayerDetails: true,
-          includePrizeHistory: true,
-          includeGameStats: true
+        const sessionData = snapshot.val();
+        
+        // Prepare export data
+        const exportData = [];
+        
+        // Add session summary
+        exportData.push({
+          Type: 'Session Summary',
+          Date: new Date(sessionData.startTime).toLocaleDateString(),
+          Duration: formatDuration(sessionData.endTime - sessionData.startTime),
+          Players: Object.keys(sessionData.players || {}).length,
+          Tickets: Object.keys(sessionData.activeTickets?.bookings || {}).length,
+          Revenue: calculateRevenue(sessionData),
+          Prizes: countPrizesAwarded(sessionData)
         });
-
-        // Create download link
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `game_session_${sessionId}_${new Date().toISOString()}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        
+        // Add player data
+        Object.values(sessionData.players || {}).forEach((player: any) => {
+          exportData.push({
+            Type: 'Player',
+            Name: player.name,
+            Phone: player.phoneNumber,
+            Tickets: player.tickets?.length || 0,
+            'Ticket IDs': player.tickets?.join(', ') || ''
+          });
+        });
+        
+        // Add winners data
+        if (sessionData.gameState?.winners) {
+          Object.entries(sessionData.gameState.winners).forEach(([prizeType, winners]) => {
+            if (Array.isArray(winners) && winners.length > 0) {
+              winners.forEach((ticketId: string) => {
+                const booking = sessionData.activeTickets?.bookings?.[ticketId];
+                if (booking) {
+                  exportData.push({
+                    Type: 'Winner',
+                    Prize: prizeType.replace(/([A-Z])/g, ' $1').trim(),
+                    'Ticket ID': ticketId,
+                    Player: booking.playerName,
+                    Phone: booking.phoneNumber
+                  });
+                }
+              });
+            }
+          });
+        }
+        
+        // Export to CSV
+        exportToCSV(
+          exportData,
+          `game_session_${sessionId}_${new Date().toISOString().slice(0, 10)}.csv`
+        );
       }
     } catch (error) {
       console.error('Error exporting session:', error);
@@ -274,7 +302,7 @@ export const SessionHistory: React.FC = () => {
                       disabled={isExporting}
                       className="text-green-600 hover:text-green-900"
                     >
-                      Export
+                      {isExporting ? 'Exporting...' : 'Export'}
                     </button>
                   </td>
                 </tr>
