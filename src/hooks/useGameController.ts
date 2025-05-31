@@ -1,5 +1,5 @@
-// src/hooks/useGameController.ts - Updated with simplified validation
-import { useState, useCallback, useEffect } from 'react';
+// src/hooks/useGameController.ts - Fixed auto-calling issue
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useGameDatabase } from './useGameDatabase';
 import { useNumberCalling } from './useNumberCalling';
 import { useGameState } from './useGameState';
@@ -26,6 +26,10 @@ export function useGameController({
   const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
   const [currentNumber, setCurrentNumber] = useState<number | null>(null);
 
+  // Refs to track the latest state for number calling
+  const gameStateRef = useRef<Game.CurrentGame | null>(null);
+  const isActiveRef = useRef(false);
+
   // Initialize database hook
   const database = useGameDatabase({
     hostId,
@@ -51,6 +55,21 @@ export function useGameController({
 
   // Get derived state for other hooks
   const isPaused = gameState?.gameState?.status === 'paused' || !gameState?.gameState?.isAutoCalling;
+
+  // Update refs when state changes
+  useEffect(() => {
+    gameStateRef.current = gameState;
+    isActiveRef.current = !isPaused && !isGameEnded && !allPrizesWon;
+    
+    console.log('🎮 Game Controller State Update:', {
+      isPaused,
+      isGameEnded,
+      allPrizesWon,
+      status: gameState?.gameState?.status,
+      isAutoCalling: gameState?.gameState?.isAutoCalling,
+      isActiveRef: isActiveRef.current
+    });
+  }, [gameState, isPaused, isGameEnded, allPrizesWon]);
 
   // Initialize audio hook
   const audio = useGameAudio({
@@ -164,6 +183,7 @@ export function useGameController({
     isGameEnded,
     allPrizesWon,
     onNumberGenerated: useCallback(async (number: number) => {
+      console.log(`🎲 Generating number: ${number}`);
       setIsProcessing(true);
       try {
         // Update database with new number
@@ -214,24 +234,44 @@ export function useGameController({
 
   // Game control functions with coordination
   const handlePauseGame = useCallback(async () => {
+    console.log('🛑 Pausing game and clearing schedule');
     numberCalling.clearSchedule();
     await pauseGame();
   }, [numberCalling, pauseGame]);
 
   const handleResumeGame = useCallback(async () => {
-    await resumeGame();
-    // Start number calling after successful resume
-    if (!allPrizesWon && !isGameEnded) {
-      numberCalling.scheduleNext();
+    console.log('▶️ Resuming game...');
+    
+    try {
+      await resumeGame();
+      
+      // Wait a bit for the state to update, then start number calling
+      setTimeout(() => {
+        if (!allPrizesWon && !isGameEnded) {
+          console.log('🚀 Starting number calling after resume');
+          numberCalling.scheduleNext();
+        } else {
+          console.log('❌ Cannot start calling - game ended or all prizes won', {
+            allPrizesWon,
+            isGameEnded
+          });
+        }
+      }, 100);
+      
+    } catch (error) {
+      console.error('Failed to resume game:', error);
+      onError?.('Failed to resume game');
     }
-  }, [resumeGame, numberCalling, allPrizesWon, isGameEnded]);
+  }, [resumeGame, numberCalling, allPrizesWon, isGameEnded, onError]);
 
   const handleCompleteGame = useCallback(async () => {
+    console.log('🏁 Completing game and clearing schedule');
     numberCalling.clearSchedule();
     await completeGame();
   }, [numberCalling, completeGame]);
 
   const setCallDelay = useCallback(async (delay: number) => {
+    console.log(`⏱️ Setting call delay to ${delay} seconds`);
     // Update number calling hook
     numberCalling.setDelay(delay);
     
@@ -239,19 +279,40 @@ export function useGameController({
     await database.updateNumberSystem({ callDelay: delay });
   }, [numberCalling, database]);
 
-  // Auto-start number generation when game becomes active
+  // Enhanced auto-start logic with better state tracking
   useEffect(() => {
-    if (!isPaused && !isGameEnded && !allPrizesWon && !isProcessing) {
-      // Only start if we haven't started yet, or if explicitly resumed
-      const shouldStart = calledNumbers.length === 0 || 
-                         gameState?.gameState?.status === 'active';
+    const shouldStart = !isPaused && !isGameEnded && !allPrizesWon && !isProcessing;
+    const hasCalledNumbers = calledNumbers.length > 0;
+    const isStatusActive = gameState?.gameState?.status === 'active';
+    
+    console.log('🔄 Auto-start check:', {
+      shouldStart,
+      isPaused,
+      isGameEnded,
+      allPrizesWon,
+      isProcessing,
+      hasCalledNumbers,
+      isStatusActive,
+      gameStatus: gameState?.gameState?.status,
+      isAutoCalling: gameState?.gameState?.isAutoCalling
+    });
+
+    if (shouldStart && isStatusActive) {
+      // Start number calling immediately when conditions are met
+      console.log('🎯 Conditions met - starting number calling');
       
-      if (shouldStart) {
-        numberCalling.scheduleNext();
-      }
+      // Small delay to ensure state is properly updated
+      const timer = setTimeout(() => {
+        if (isActiveRef.current && !isProcessing) {
+          console.log('🎲 Actually starting number generation');
+          numberCalling.scheduleNext();
+        }
+      }, 200);
+      
+      return () => clearTimeout(timer);
     }
-  }, [isPaused, isGameEnded, allPrizesWon, isProcessing, calledNumbers.length, 
-      gameState?.gameState?.status, numberCalling]);
+  }, [isPaused, isGameEnded, allPrizesWon, isProcessing, gameState?.gameState?.status, 
+      gameState?.gameState?.isAutoCalling, numberCalling]);
 
   // Manual prize validation trigger (for debugging or manual checks)
   const triggerPrizeValidation = useCallback(async () => {
@@ -259,6 +320,22 @@ export function useGameController({
       await validatePrizesForCurrentState(calledNumbers);
     }
   }, [calledNumbers, validatePrizesForCurrentState]);
+
+  // Manual number generation for testing
+  const generateAndCallNumber = useCallback(async (): Promise<number | null> => {
+    if (isProcessing || isPaused || isGameEnded || allPrizesWon) {
+      console.log('Cannot generate number - invalid state:', {
+        isProcessing,
+        isPaused,
+        isGameEnded,
+        allPrizesWon
+      });
+      return null;
+    }
+
+    console.log('🎲 Manual number generation triggered');
+    return await numberCalling.generateNumber();
+  }, [numberCalling, isProcessing, isPaused, isGameEnded, allPrizesWon]);
 
   // Return simplified interface
   return {
@@ -277,7 +354,7 @@ export function useGameController({
     pauseGame: handlePauseGame,
     resumeGame: handleResumeGame,
     completeGame: handleCompleteGame,
-    generateAndCallNumber: numberCalling.generateNumber,
+    generateAndCallNumber,
     setCallDelay,
     triggerPrizeValidation, // New method for manual validation
     
