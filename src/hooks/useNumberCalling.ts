@@ -1,7 +1,6 @@
-// src/hooks/useNumberCalling.ts - Fixed with better scheduling
+// src/hooks/useNumberCalling.ts - SIMPLIFIED VERSION
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { NumberCallingHookReturn } from '../types/hooks';
-import appConfig from '../config/appConfig';
 
 interface UseNumberCallingProps {
   calledNumbers: number[];
@@ -20,49 +19,33 @@ export function useNumberCalling({
   onNumberGenerated,
   onError
 }: UseNumberCallingProps): NumberCallingHookReturn {
-  const [callDelay, setCallDelayState] = useState(appConfig.gameDefaults.callDelay);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const callDelayRef = useRef(callDelay);
-  const isPausedRef = useRef(isPaused);
-  const isGameEndedRef = useRef(isGameEnded);
-  const allPrizesWonRef = useRef(allPrizesWon);
-  const isSchedulingRef = useRef(false);
+  const [callDelay, setCallDelay] = useState(5);
+  
+  // Single timer ref for simplicity
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const isActiveRef = useRef(false);
+  
+  // Clear any existing timer
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    isActiveRef.current = false;
+  }, []);
 
-  // Keep refs in sync with state
-  useEffect(() => {
-    callDelayRef.current = callDelay;
-    isPausedRef.current = isPaused;
-    isGameEndedRef.current = isGameEnded;
-    allPrizesWonRef.current = allPrizesWon;
-    
-    console.log('📱 Number Calling State Update:', {
-      callDelay,
-      isPaused,
-      isGameEnded,
-      allPrizesWon,
-      isScheduling: isSchedulingRef.current,
-      hasTimeout: !!timeoutRef.current
-    });
-  }, [callDelay, isPaused, isGameEnded, allPrizesWon]);
-
+  // Generate a random number
   const generateNumber = useCallback(async (): Promise<number | null> => {
     try {
-      console.log('🎲 Generate number called - checking conditions:', {
-        isPaused: isPausedRef.current,
-        isGameEnded: isGameEndedRef.current,
-        allPrizesWon: allPrizesWonRef.current,
-        calledCount: calledNumbers.length
-      });
-
-      // Check if game should continue
-      if (isPausedRef.current || isGameEndedRef.current || allPrizesWonRef.current) {
+      // Check if we should generate a number
+      if (isPaused || isGameEnded || allPrizesWon) {
         console.log('❌ Cannot generate number - game stopped');
         return null;
       }
 
       // Check if all numbers have been called
       if (calledNumbers.length >= 90) {
-        console.log('❌ Cannot generate number - all numbers called');
+        console.log('❌ All numbers have been called');
         return null;
       }
 
@@ -79,123 +62,80 @@ export function useNumberCalling({
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
       const selectedNumber = availableNumbers[randomIndex];
 
-      console.log(`✅ Generated number: ${selectedNumber} (${availableNumbers.length} available)`);
+      console.log(`✅ Generated number: ${selectedNumber}`);
       
+      // Trigger callback
       onNumberGenerated?.(selectedNumber);
       return selectedNumber;
+      
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to generate number';
       console.error('❌ Number generation error:', error);
       onError?.(message);
       return null;
     }
-  }, [calledNumbers, onNumberGenerated, onError]);
+  }, [calledNumbers, isPaused, isGameEnded, allPrizesWon, onNumberGenerated, onError]);
 
+  // Schedule the next number call
   const scheduleNext = useCallback(() => {
-    console.log('⏰ Schedule next called - checking conditions:', {
-      isPaused: isPausedRef.current,
-      isGameEnded: isGameEndedRef.current,
-      allPrizesWon: allPrizesWonRef.current,
-      isScheduling: isSchedulingRef.current,
-      hasExistingTimeout: !!timeoutRef.current,
-      callDelay: callDelayRef.current
-    });
-
-    // Clear existing timeout
-    if (timeoutRef.current) {
-      console.log('🧹 Clearing existing timeout');
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-
+    // Clear any existing timer first
+    clearTimer();
+    
     // Don't schedule if game should be stopped
-    if (isPausedRef.current || isGameEndedRef.current || allPrizesWonRef.current) {
+    if (isPaused || isGameEnded || allPrizesWon) {
       console.log('❌ Not scheduling - game is stopped');
-      isSchedulingRef.current = false;
       return;
     }
 
-    // Prevent multiple scheduling
-    if (isSchedulingRef.current) {
-      console.log('⚠️ Already scheduling - skipping');
-      return;
-    }
-
-    isSchedulingRef.current = true;
+    console.log(`⏰ Scheduling next number in ${callDelay} seconds`);
+    isActiveRef.current = true;
     
-    console.log(`⏰ Scheduling next number in ${callDelayRef.current} seconds`);
-
-    // Schedule next number
-    timeoutRef.current = setTimeout(() => {
-      console.log('⏰ Timeout triggered - checking conditions again:', {
-        isPaused: isPausedRef.current,
-        isGameEnded: isGameEndedRef.current,
-        allPrizesWon: allPrizesWonRef.current
-      });
-
-      if (!isPausedRef.current && !isGameEndedRef.current && !allPrizesWonRef.current) {
-        console.log('🎯 Conditions still valid - generating number');
+    timerRef.current = setTimeout(async () => {
+      // Double-check conditions before generating
+      if (isActiveRef.current && !isPaused && !isGameEnded && !allPrizesWon) {
+        console.log('⏰ Timer triggered - generating number');
         
-        generateNumber().then((number) => {
-          if (number !== null) {
-            // Schedule the next one after successful generation
-            console.log('✅ Number generated successfully, scheduling next');
-            isSchedulingRef.current = false;
-            scheduleNext();
-          } else {
-            console.log('❌ Number generation failed, stopping schedule');
-            isSchedulingRef.current = false;
-          }
-        }).catch((error) => {
-          console.error('❌ Error in scheduled generation:', error);
-          isSchedulingRef.current = false;
-        });
+        const number = await generateNumber();
+        
+        // Schedule next only if number was successfully generated and we're still active
+        if (number !== null && isActiveRef.current) {
+          scheduleNext();
+        } else {
+          console.log('❌ Stopping schedule - no number generated or game stopped');
+          clearTimer();
+        }
       } else {
-        console.log('❌ Conditions changed - stopping schedule');
-        isSchedulingRef.current = false;
+        console.log('❌ Timer triggered but conditions changed - stopping');
+        clearTimer();
       }
-    }, callDelayRef.current * 1000);
-  }, [generateNumber]);
+    }, callDelay * 1000);
+  }, [callDelay, isPaused, isGameEnded, allPrizesWon, generateNumber, clearTimer]);
 
-  const clearSchedule = useCallback(() => {
-    console.log('🛑 Clear schedule called');
-    
-    if (timeoutRef.current) {
-      console.log('🧹 Clearing timeout');
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    
-    isSchedulingRef.current = false;
-    console.log('✅ Schedule cleared');
-  }, []);
-
+  // Update call delay
   const setDelay = useCallback((seconds: number) => {
-    const validDelay = Math.min(Math.max(3, seconds), 10);
-    console.log(`⏱️ Setting delay to ${validDelay} seconds (was ${callDelay})`);
+    const validDelay = Math.min(Math.max(3, seconds), 20);
+    console.log(`⏱️ Setting delay to ${validDelay} seconds`);
+    setCallDelay(validDelay);
     
-    setCallDelayState(validDelay);
-    callDelayRef.current = validDelay;
-    
-    // Reschedule if currently running
-    if (timeoutRef.current && !isPausedRef.current) {
+    // If we're currently running, reschedule with new delay
+    if (isActiveRef.current) {
       console.log('🔄 Rescheduling with new delay');
-      clearSchedule();
       scheduleNext();
     }
-  }, [callDelay, clearSchedule, scheduleNext]);
+  }, [scheduleNext]);
+
+  // Clear schedule
+  const clearSchedule = useCallback(() => {
+    console.log('🛑 Clearing schedule');
+    clearTimer();
+  }, [clearTimer]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      console.log('🧹 Number calling hook cleanup');
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      isSchedulingRef.current = false;
+      clearTimer();
     };
-  }, []);
+  }, [clearTimer]);
 
   return {
     generateNumber,
