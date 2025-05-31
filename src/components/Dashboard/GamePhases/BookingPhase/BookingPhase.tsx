@@ -10,7 +10,6 @@ import TicketGrid from './components/TicketGrid';
 import BookingForm from './components/BookingForm';
 import BookingsList from './components/BookingsList';
 import { Game, GAME_PHASES } from '../../../../types/game';
-import { handleApiError } from '@utils/errorHandler';
 
 interface TicketBookingData {
   name: string;
@@ -20,6 +19,17 @@ interface TicketBookingData {
 interface BookingPhaseProps {
   currentGame: Game.CurrentGame;
 }
+
+// Simple error handler replacement
+const handleApiError = (error: any, defaultMessage: string): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return defaultMessage;
+};
 
 const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
   const { currentUser } = useAuth();
