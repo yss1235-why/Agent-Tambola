@@ -1,5 +1,4 @@
-// src/hooks/useCommandQueue.ts - FIXED command creation type issues
-// React hook for sending commands through the queue system
+// src/hooks/useCommandQueue.ts - React hook for sending commands through the queue system
 // This provides a clean interface for components to interact with the command system
 
 import { useCallback, useEffect, useState, useRef } from 'react';
@@ -119,18 +118,17 @@ export function useCommandQueue({
   }, []);
   
   /**
-   * Send a generic command - FIXED to properly include hostId
+   * Send a generic command
    */
   const sendCommand = useCallback((
     command: CreateCommand<GameCommand>, 
     priority: CommandPriority = CommandPriority.NORMAL
   ): string => {
-    // FIXED: Ensure hostId is included in the command
     const fullCommand: GameCommand = {
       ...command,
       id: generateCommandId(),
       timestamp: Date.now(),
-      hostId // This was missing before
+      hostId
     } as GameCommand;
     
     const success = commandQueue.current.enqueue(fullCommand, priority);
@@ -153,7 +151,7 @@ export function useCommandQueue({
     return sendCommand({
       type: 'CALL_NUMBER',
       payload: { number }
-    }, CommandPriority.HIGH); // High priority for number calls
+    }, CommandPriority.HIGH);
   }, [sendCommand]);
   
   /**
@@ -166,7 +164,7 @@ export function useCommandQueue({
     return sendCommand({
       type: 'UPDATE_GAME_STATUS',
       payload: { status, isAutoCalling }
-    }, CommandPriority.CRITICAL); // Critical priority for status changes
+    }, CommandPriority.CRITICAL);
   }, [sendCommand]);
   
   /**
@@ -180,7 +178,7 @@ export function useCommandQueue({
     return sendCommand({
       type: 'CREATE_BOOKING',
       payload: { playerName, phoneNumber, tickets }
-    }, CommandPriority.HIGH); // High priority for bookings
+    }, CommandPriority.HIGH);
   }, [sendCommand]);
   
   /**
@@ -210,7 +208,7 @@ export function useCommandQueue({
     return sendCommand({
       type: 'UPDATE_PRIZE_WINNERS',
       payload: { prizeType, ticketIds, playerName, phoneNumber, allPrizeTypes }
-    }, CommandPriority.HIGH); // High priority for prize updates
+    }, CommandPriority.HIGH);
   }, [sendCommand]);
   
   /**
@@ -360,120 +358,4 @@ export function useCommandQueue({
   };
 }
 
-/**
- * Hook for components that only need to send commands (simplified interface)
- */
-export function useGameCommands(hostId: string) {
-  const {
-    callNumber,
-    updateGameStatus,
-    createBooking,
-    updateBooking,
-    updateGameSettings,
-    startBookingPhase,
-    startPlayingPhase,
-    completeGame,
-    updateCallDelay,
-    updateSoundSettings,
-    isProcessing,
-    queueLength
-  } = useCommandQueue({ hostId });
-  
-  return {
-    callNumber,
-    updateGameStatus,
-    createBooking,
-    updateBooking,
-    updateGameSettings,
-    startBookingPhase,
-    startPlayingPhase,
-    completeGame,
-    updateCallDelay,
-    updateSoundSettings,
-    isProcessing,
-    queueLength
-  };
-}
-
-/**
- * Hook for monitoring command queue health
- */
-export function useCommandQueueMonitor(hostId: string) {
-  const [health, setHealth] = useState<{ healthy: boolean; issues: string[] }>({ 
-    healthy: true, 
-    issues: [] 
-  });
-  const [queueSnapshot, setQueueSnapshot] = useState<Array<{ 
-    type: string; 
-    priority: CommandPriority; 
-    timestamp: number; 
-    retryCount: number 
-  }>>([]);
-  
-  const { stats, isProcessing, queueLength, healthCheck, getQueueSnapshot } = useCommandQueue({ 
-    hostId 
-  });
-  
-  // Update health status periodically
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setHealth(healthCheck());
-      setQueueSnapshot(getQueueSnapshot());
-    }, 5000); // Check every 5 seconds
-    
-    return () => clearInterval(interval);
-  }, [healthCheck, getQueueSnapshot]);
-  
-  return {
-    health,
-    stats,
-    isProcessing,
-    queueLength,
-    queueSnapshot
-  };
-}
-
-/**
- * Hook for handling command results with automatic error handling
- */
-export function useCommandHandler(hostId: string, options?: {
-  onSuccess?: (result: CommandResult) => void;
-  onError?: (error: CommandError) => void;
-  showToasts?: boolean;
-}) {
-  const [successCount, setSuccessCount] = useState(0);
-  const [errorCount, setErrorCount] = useState(0);
-  const [recentResults, setRecentResults] = useState<CommandResult[]>([]);
-  const [recentErrors, setRecentErrors] = useState<CommandError[]>([]);
-  
-  const commandQueue = useCommandQueue({
-    hostId,
-    onResult: (result) => {
-      if (result.success) {
-        setSuccessCount(prev => prev + 1);
-        options?.onSuccess?.(result);
-      }
-      
-      setRecentResults(prev => [result, ...prev].slice(0, 10)); // Keep last 10
-    },
-    onError: (error) => {
-      setErrorCount(prev => prev + 1);
-      setRecentErrors(prev => [error, ...prev].slice(0, 10)); // Keep last 10
-      
-      options?.onError?.(error);
-      
-      if (options?.showToasts) {
-        console.error('Command error:', error.message);
-        // Could integrate with a toast system here
-      }
-    }
-  });
-  
-  return {
-    ...commandQueue,
-    successCount,
-    errorCount,
-    recentResults,
-    recentErrors
-  };
-}
+export default useCommandQueue;
