@@ -1,7 +1,8 @@
-// src/contexts/GameContext.tsx - Updated with correct imports
+// src/contexts/GameContext.tsx - Fixed to include currentGame
 import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
-import { useGameController, PrizeWinResult } from '../hooks/useGameController'; // Updated import
-import { formatMultiplePrizes } from '../utils/prizeValidation'; // Updated import
+import { useGameController } from '../hooks/useGameController';
+import { formatMultiplePrizes } from '../utils/prizeValidation';
+import type { PrizeWinResult } from '../types/hooks'; // Import from types
 import type { Game } from '../types/game';
 
 type GameContextType = ReturnType<typeof useGameController> & {
@@ -12,6 +13,7 @@ type GameContextType = ReturnType<typeof useGameController> & {
     message: string;
     type: 'success' | 'error' | 'info';
   }>;
+  currentGame: Game.CurrentGame | null; // ADD: Expose currentGame from controller
 };
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -88,7 +90,8 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
     ...gameController,
     hostId,
     announceWinner,
-    toastNotifications
+    toastNotifications,
+    currentGame: gameController.gameState // ADD: Expose currentGame from gameState
   }), [gameController, hostId, toastNotifications]);
   
   return (
