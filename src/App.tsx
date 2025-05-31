@@ -101,6 +101,7 @@ const GameRoutes: React.FC<{ element: React.ReactNode }> = ({ element }) => {
   
   // Use configured host ID (security: ensures single-tenant access)
   const hostId = appConfig.hostUID || currentUser?.uid || '';
+  console.log('🔍 GameRoutes hostId:', hostId); // Add this line to see what it's using
   
   console.log('🔒 Security - Using designated hostId:', hostId, 'for user:', currentUser?.email);
   
