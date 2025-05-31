@@ -1,8 +1,9 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay.tsx - Updated for simplified system
+// src/components/Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay.tsx - Updated for multiple prizes
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { UserCircle, Phone, Clock, Trophy, Award, Download, Printer } from 'lucide-react';
 import type { Game } from '../../../../../types/game';
 import { exportToCSV } from '../../../../../services'; // Using simplified export function
+import { formatMultiplePrizes } from '../../../../../utils/prizeValidation'; // NEW: Import the formatter
 
 // Define default prizes configuration
 const DEFAULT_PRIZES: Game.Settings['prizes'] = {
@@ -20,6 +21,7 @@ const DEFAULT_PRIZES: Game.Settings['prizes'] = {
 
 interface WinnerInfo {
   prizeType: string;
+  prizeTypes?: string[]; // NEW: Support multiple prizes
   ticketId: string;
   playerName: string;
   phoneNumber: string;
@@ -49,12 +51,20 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
   const [prizeStatistics, setPrizeStatistics] = useState<Record<string, number>>({});
   const prevWinnersCountRef = useRef<number>(0);
 
-  // Process winners data
+  // Process winners data - UPDATED for multiple prizes
   useEffect(() => {
     const formattedWinners: WinnerInfo[] = [];
     const prizeStats: Record<string, number> = {};
     
     if (winners) {
+      // Group by player to detect multiple prizes
+      const playerPrizes = new Map<string, { 
+        prizes: string[], 
+        ticketId: string, 
+        booking: Game.Booking,
+        timestamp?: number 
+      }>();
+      
       Object.entries(winners).forEach(([prizeType, ticketIds]) => {
         // Skip prizes that aren't enabled
         if (!prizes[prizeType as keyof typeof prizes]) return;
@@ -66,16 +76,38 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
           ticketIds.forEach((ticketId: string) => {
             const booking = bookings[ticketId];
             if (booking) {
-              formattedWinners.push({
-                prizeType: prizeType.replace(/([A-Z])/g, ' $1').trim(),
-                ticketId,
-                playerName: booking.playerName,
-                phoneNumber: booking.phoneNumber,
-                timestamp: booking.timestamp
-              });
+              const playerKey = `${booking.playerName}-${booking.phoneNumber}`;
+              const prizeDisplayName = prizeType.replace(/([A-Z])/g, ' $1').trim();
+              
+              if (playerPrizes.has(playerKey)) {
+                // Add to existing player's prizes
+                playerPrizes.get(playerKey)!.prizes.push(prizeDisplayName);
+              } else {
+                // Create new player entry
+                playerPrizes.set(playerKey, {
+                  prizes: [prizeDisplayName],
+                  ticketId,
+                  booking,
+                  timestamp: booking.timestamp
+                });
+              }
             }
           });
         }
+      });
+      
+      // Convert to formatted winners
+      playerPrizes.forEach(({ prizes: prizeList, ticketId, booking, timestamp }) => {
+        const combinedPrizeText = formatMultiplePrizes(prizeList);
+        
+        formattedWinners.push({
+          prizeType: combinedPrizeText, // Combined display
+          prizeTypes: prizeList, // Individual prizes
+          ticketId,
+          playerName: booking.playerName,
+          phoneNumber: booking.phoneNumber,
+          timestamp
+        });
       });
     }
 
@@ -197,12 +229,13 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
     printWindow.print();
   }, [displayedWinners]);
 
-  // Export winners using simplified export function
+  // Export winners using simplified export function - UPDATED for multiple prizes
   const exportWinnersAsCsv = useCallback(() => {
     if (displayedWinners.length === 0) return;
     
     const exportData = displayedWinners.map((winner) => ({
-      'Prize Type': winner.prizeType,
+      'Prize Type': winner.prizeType, // This now contains combined prizes
+      'Individual Prizes': winner.prizeTypes ? winner.prizeTypes.join(' + ') : winner.prizeType,
       'Ticket ID': winner.ticketId,
       'Player Name': winner.playerName,
       'Phone Number': winner.phoneNumber,
