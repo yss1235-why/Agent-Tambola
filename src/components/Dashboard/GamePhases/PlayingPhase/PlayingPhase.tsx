@@ -1,4 +1,6 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx - Fixed to prevent re-render loops
+// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx - UPDATED to use Command Queue Pattern
+// Simplified playing phase that uses commands instead of complex game controller
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -11,36 +13,32 @@ const PlayingPhase: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
-  // Use game controller from context
-  const {
+  // Get game state and command methods from context
+  const { 
     currentGame,
-    isProcessing,
-    isPaused,
-    currentNumber,
-    calledNumbers,
-    error: gameError,
-    allPrizesWon,
-    isGameEnded,
-    pauseGame,
-    resumeGame,
+    updateGameStatus,
+    updateCallDelay,
+    updateSoundSettings,
     completeGame,
-    setCallDelay,
-    setSoundEnabled,
-    resetError
+    callNumber,
+    error: gameError,
+    isProcessing,
+    clearError
   } = useGame();
   
-  // Local state - simplified and stable
+  // Local state for UI
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGameComplete, setIsGameComplete] = useState(false);
   const [soundEnabled, setSoundEnabledLocal] = useState(true);
   const [callDelay, setCallDelayLocal] = useState(5);
   
-  // Refs to prevent excessive re-initialization logs
+  // Refs for auto-calling logic
+  const autoCallTimer = useRef<NodeJS.Timeout | null>(null);
+  const isAutoCallingRef = useRef(false);
   const hasInitialized = useRef(false);
-  const lastGameStateRef = useRef<string>('');
 
-  // Initialize component - FIXED to prevent constant re-initialization
+  // Initialize component
   useEffect(() => {
     if (!currentUser?.uid) {
       navigate('/login');
@@ -48,75 +46,171 @@ const PlayingPhase: React.FC = () => {
     }
     
     if (currentGame) {
-      // Create a state signature to prevent excessive logging
-      const gameStateSignature = `${currentGame.gameState?.status}-${currentGame.gameState?.phase}-${currentGame.numberSystem?.calledNumbers?.length}-${currentGame.gameState?.allPrizesWon}`;
-      
-      // Only log initialization when the game state actually changes or on first load
-      if (!hasInitialized.current || lastGameStateRef.current !== gameStateSignature) {
+      if (!hasInitialized.current) {
         console.log("PlayingPhase initialized with game:", {
           status: currentGame.gameState?.status,
           phase: currentGame.gameState?.phase,
           calledNumbers: currentGame.numberSystem?.calledNumbers?.length || 0,
           allPrizesWon: currentGame.gameState?.allPrizesWon
         });
-        
         hasInitialized.current = true;
-        lastGameStateRef.current = gameStateSignature;
       }
       
       const isComplete = currentGame.gameState?.status === 'ended' || 
                         currentGame.gameState?.phase === 4 ||
-                        isGameEnded;
+                        currentGame.gameState?.allPrizesWon;
       
       setIsLoading(false);
       setIsGameComplete(isComplete);
       setCallDelayLocal(currentGame.numberSystem?.callDelay || 5);
       setSoundEnabledLocal(currentGame.gameState?.soundEnabled !== false);
+      
+      // Update auto-calling state
+      const shouldAutoCalling = currentGame.gameState?.status === 'active' && 
+                               currentGame.gameState?.isAutoCalling && 
+                               !isComplete;
+      
+      if (shouldAutoCalling !== isAutoCallingRef.current) {
+        console.log(`🔄 Auto-calling state changed: ${isAutoCallingRef.current} → ${shouldAutoCalling}`);
+        isAutoCallingRef.current = shouldAutoCalling;
+        
+        if (shouldAutoCalling) {
+          startAutoCalling();
+        } else {
+          stopAutoCalling();
+        }
+      }
     }
-  }, [currentUser, currentGame, navigate, isGameEnded]);
+  }, [currentUser, currentGame, navigate]);
 
-  // Sync with game completion states - STABLE
-  useEffect(() => {
-    if (allPrizesWon || isGameEnded) {
-      setIsGameComplete(true);
-    }
-  }, [allPrizesWon, isGameEnded]);
-
-  // Sync with game error - STABLE
+  // Sync with game error
   useEffect(() => {
     if (gameError) {
       setError(gameError);
     }
   }, [gameError]);
 
-  // STABLE callbacks with useCallback to prevent re-renders
+  /**
+   * Start auto-calling numbers
+   */
+  const startAutoCalling = useCallback(() => {
+    if (autoCallTimer.current) {
+      clearTimeout(autoCallTimer.current);
+    }
+    
+    if (!currentGame || isGameComplete) {
+      console.log('❌ Cannot start auto-calling: no game or game complete');
+      return;
+    }
+    
+    const calledNumbers = currentGame.numberSystem?.calledNumbers || [];
+    if (calledNumbers.length >= 90) {
+      console.log('❌ Cannot start auto-calling: all numbers called');
+      return;
+    }
+    
+    console.log(`⏰ Starting auto-calling with ${callDelay}s delay`);
+    
+    const scheduleNext = () => {
+      if (!isAutoCallingRef.current) {
+        console.log('❌ Auto-calling stopped');
+        return;
+      }
+      
+      autoCallTimer.current = setTimeout(() => {
+        if (isAutoCallingRef.current && currentGame) {
+          const currentCalledNumbers = currentGame.numberSystem?.calledNumbers || [];
+          
+          if (currentCalledNumbers.length < 90) {
+            // Generate random available number
+            const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
+              .filter(n => !currentCalledNumbers.includes(n));
+            
+            if (availableNumbers.length > 0) {
+              const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+              const numberToCall = availableNumbers[randomIndex];
+              
+              console.log(`🎲 Auto-calling number: ${numberToCall}`);
+              
+              try {
+                callNumber(numberToCall);
+              } catch (error) {
+                console.error('❌ Auto-call failed:', error);
+                setError('Auto-calling failed');
+              }
+              
+              // Schedule next call
+              scheduleNext();
+            } else {
+              console.log('🏁 All numbers called, stopping auto-calling');
+              isAutoCallingRef.current = false;
+            }
+          }
+        }
+      }, callDelay * 1000);
+    };
+    
+    scheduleNext();
+  }, [currentGame, isGameComplete, callDelay, callNumber]);
+
+  /**
+   * Stop auto-calling
+   */
+  const stopAutoCalling = useCallback(() => {
+    console.log('🛑 Stopping auto-calling');
+    isAutoCallingRef.current = false;
+    
+    if (autoCallTimer.current) {
+      clearTimeout(autoCallTimer.current);
+      autoCallTimer.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopAutoCalling();
+    };
+  }, [stopAutoCalling]);
+
+  /**
+   * Handle delay change using command
+   */
   const handleDelayChange = useCallback(async (newDelay: number) => {
     setCallDelayLocal(newDelay);
-    console.log(`Changing call delay to ${newDelay} seconds`);
+    console.log(`⏱️ Changing call delay to ${newDelay} seconds`);
     
     try {
-      await setCallDelay(newDelay);
+      const commandId = updateCallDelay(newDelay);
+      console.log(`📤 Update delay command sent: ${commandId}`);
     } catch (err) {
-      console.error('Failed to update call delay:', err);
+      console.error('❌ Failed to update call delay:', err);
       setError('Failed to update call delay');
     }
-  }, [setCallDelay]);
+  }, [updateCallDelay]);
 
+  /**
+   * Handle sound toggle using command
+   */
   const handleSoundToggle = useCallback(async () => {
     const newSoundEnabled = !soundEnabled;
     setSoundEnabledLocal(newSoundEnabled);
-    console.log(`Sound toggled to ${newSoundEnabled ? 'on' : 'off'}`);
+    console.log(`🔊 Sound toggled to ${newSoundEnabled ? 'on' : 'off'}`);
     
     try {
-      await setSoundEnabled(newSoundEnabled);
+      const commandId = updateSoundSettings(newSoundEnabled);
+      console.log(`📤 Update sound command sent: ${commandId}`);
     } catch (err) {
-      console.error('Failed to toggle sound:', err);
+      console.error('❌ Failed to toggle sound:', err);
       setError('Failed to toggle sound');
     }
-  }, [soundEnabled, setSoundEnabled]);
+  }, [soundEnabled, updateSoundSettings]);
 
+  /**
+   * Handle status change using command
+   */
   const handleStatusChange = useCallback(async (status: 'active' | 'paused') => {
-    if (allPrizesWon && status === 'active') {
+    if (currentGame?.gameState?.allPrizesWon && status === 'active') {
       setError('Cannot resume game: All prizes have been won');
       return;
     }
@@ -126,44 +220,51 @@ const PlayingPhase: React.FC = () => {
       return;
     }
     
-    console.log(`Changing game status to: ${status}`);
+    console.log(`🎮 Changing game status to: ${status}`);
     
     try {
-      if (status === 'paused') {
-        await pauseGame();
-      } else {
-        await resumeGame();
-      }
+      const commandId = updateGameStatus(status, status === 'active');
+      console.log(`📤 Update status command sent: ${commandId}`);
     } catch (err) {
-      console.error("Error changing game status:", err);
+      console.error("❌ Error changing game status:", err);
       setError('Failed to change game status');
     }
-  }, [allPrizesWon, isGameComplete, pauseGame, resumeGame]);
+  }, [currentGame?.gameState?.allPrizesWon, isGameComplete, updateGameStatus]);
 
+  /**
+   * Handle game end using command
+   */
   const handleGameEnd = useCallback(async () => {
     try {
-      console.log('Ending game...');
+      console.log('🏁 Ending game with command...');
       setIsGameComplete(true);
       
-      await completeGame();
+      const commandId = completeGame('Manual end by host');
+      console.log(`📤 Complete game command sent: ${commandId}`);
       
       setTimeout(() => {
         navigate('/dashboard');
       }, 2000);
     } catch (err) {
-      console.error('Failed to end game:', err);
+      console.error('❌ Failed to end game:', err);
       setError('Failed to end game');
     }
   }, [completeGame, navigate]);
 
+  /**
+   * Handle start new game
+   */
   const handleStartNewGame = useCallback(async () => {
     navigate('/dashboard', { replace: true });
   }, [navigate]);
 
+  /**
+   * Handle error dismiss
+   */
   const handleErrorDismiss = useCallback(() => {
     setError(null);
-    resetError();
-  }, [resetError]);
+    clearError();
+  }, [clearError]);
 
   // Render loading state
   if (isLoading || !currentGame) {
@@ -174,7 +275,7 @@ const PlayingPhase: React.FC = () => {
     );
   }
 
-  // Safely extract winners and settings with stable references
+  // Safely extract winners and settings
   const winners = currentGame.gameState?.winners || {
     quickFive: [], topLine: [], middleLine: [], bottomLine: [],
     corners: [], starCorners: [], halfSheet: [], fullSheet: [],
@@ -193,21 +294,24 @@ const PlayingPhase: React.FC = () => {
     }
   };
 
+  const isPaused = currentGame.gameState?.status === 'paused' || !currentGame.gameState?.isAutoCalling;
+  const allPrizesWon = currentGame.gameState?.allPrizesWon || false;
+
   return (
     <div className="space-y-4">
-      {/* Debug panel for development - Only show when state changes */}
+      {/* Debug panel for development */}
       {process.env.NODE_ENV === 'development' && (
         <div className="bg-gray-100 p-4 rounded-lg border">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Panel - Fixed Controller</h4>
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Panel - Command Queue System</h4>
           <div className="grid grid-cols-2 gap-4 text-xs">
             <div><strong>Game Status:</strong> {currentGame.gameState?.status || 'unknown'}</div>
             <div><strong>Is Paused:</strong> {isPaused ? 'Yes' : 'No'}</div>
-            <div><strong>Numbers Called:</strong> {calledNumbers.length}/90</div>
-            <div><strong>Current Number:</strong> {currentNumber || 'None'}</div>
+            <div><strong>Auto Calling:</strong> {isAutoCallingRef.current ? 'Yes' : 'No'}</div>
+            <div><strong>Numbers Called:</strong> {currentGame.numberSystem?.calledNumbers?.length || 0}/90</div>
+            <div><strong>Current Number:</strong> {currentGame.numberSystem?.currentNumber || 'None'}</div>
             <div><strong>All Prizes Won:</strong> {allPrizesWon ? 'Yes' : 'No'}</div>
             <div><strong>Game Complete:</strong> {isGameComplete ? 'Yes' : 'No'}</div>
-            <div><strong>Processing:</strong> {isProcessing ? 'Yes' : 'No'}</div>
-            <div><strong>Active Tickets:</strong> {Object.keys(currentGame.activeTickets?.bookings || {}).length}</div>
+            <div><strong>Processing Commands:</strong> {isProcessing ? 'Yes' : 'No'}</div>
           </div>
         </div>
       )}
@@ -220,7 +324,7 @@ const PlayingPhase: React.FC = () => {
         error={error}
         isGameComplete={isGameComplete}
         isProcessing={isProcessing}
-        queueNumbers={[]} // No queue in optimized version
+        queueNumbers={[]} // No queue in command system
         allPrizesWon={allPrizesWon}
         onSoundToggle={handleSoundToggle}
         onDelayChange={handleDelayChange}
