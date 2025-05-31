@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.tsx - Updated
+// src/contexts/AuthContext.tsx - FIXED to remove deleted utils import
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { 
   User, 
@@ -8,10 +8,10 @@ import {
   getAuth,
   onAuthStateChanged
 } from 'firebase/auth';
+import { ref, get, update } from 'firebase/database';
 import { useNavigate } from 'react-router-dom';
 import { LoadingSpinner } from '@components';
-import { app } from '@lib/firebase';
-import { FirebaseUtils } from '../utils/firebaseUtils';
+import { app, database } from '@lib/firebase';
 
 interface HostProfile {
   email: string;
@@ -41,11 +41,42 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const auth: Auth = getAuth(app);
-const firebaseUtils = FirebaseUtils.getInstance();
 
 interface AuthProviderProps {
   children: ReactNode;
 }
+
+// FIXED: Simple Firebase utilities to replace deleted firebaseUtils
+const readData = async <T>(hostId: string, path: string): Promise<{ success: boolean; data?: T; error?: string }> => {
+  try {
+    const dataRef = ref(database, `hosts/${hostId}/${path}`);
+    const snapshot = await get(dataRef);
+    
+    if (snapshot.exists()) {
+      return { success: true, data: snapshot.val() as T };
+    } else {
+      return { success: false, error: 'Data not found' };
+    }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to read data' 
+    };
+  }
+};
+
+const updateData = async (hostId: string, updates: any): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const hostRef = ref(database, `hosts/${hostId}`);
+    await update(hostRef, updates);
+    return { success: true };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to update data' 
+    };
+  }
+};
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const navigate = useNavigate();
@@ -70,7 +101,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const result = await firebaseUtils.readData<HostProfile>(user.uid, '');
+          const result = await readData<HostProfile>(user.uid, '');
           
           if (result.success && result.data) {
             const profile = result.data;
@@ -121,7 +152,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const updateLastLogin = async (userId: string): Promise<void> => {
     try {
-      const result = await firebaseUtils.updateData(userId, {
+      const result = await updateData(userId, {
         lastLogin: Date.now()
       });
       
@@ -139,7 +170,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
-      const profileResult = await firebaseUtils.readData<HostProfile>(
+      const profileResult = await readData<HostProfile>(
         userCredential.user.uid, 
         ''
       );
@@ -207,7 +238,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setState(prev => ({ ...prev, isLoading: true }));
       
-      const result = await firebaseUtils.updateData(state.currentUser.uid, updates);
+      const result = await updateData(state.currentUser.uid, updates);
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to update profile');
