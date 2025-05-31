@@ -5,7 +5,6 @@ import { ref, get } from 'firebase/database';
 import { database } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoadingSpinner } from '@components';
-import { handleApiError } from '../../utils/errorHandler';
 import { Game } from '../../types/game';
 import { exportToCSV } from '../../services'; // Using simplified export function
 
@@ -19,6 +18,17 @@ interface SessionDetails {
   prizesAwarded: number;
   status: 'completed' | 'interrupted';
 }
+
+// Simple error handler replacement
+const handleApiError = (error: any, defaultMessage: string): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return defaultMessage;
+};
 
 export const SessionHistory: React.FC = () => {
   const { currentUser } = useAuth();
