@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts
+// src/services/CommandProcessor.ts - FIXED type casting and phase number issues
 // Command processor that executes all commands and handles Firebase writes
 // This is the ONLY place where Firebase writes should happen
 
@@ -300,7 +300,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute update game status command
+   * Execute update game status command - FIXED type casting
    */
   private async executeUpdateGameStatus(command: any, context: CommandContext): Promise<CommandResult> {
     const { status, isAutoCalling } = command.payload;
@@ -474,7 +474,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute initialize game command
+   * Execute initialize game command - FIXED phase numbers
    */
   private async executeInitializeGame(command: any, context: CommandContext): Promise<CommandResult> {
     const { settings, tickets } = command.payload;
@@ -483,7 +483,7 @@ export class CommandProcessor {
     const newGame: Game.CurrentGame = {
       settings,
       gameState: {
-        phase: 1, // Setup phase
+        phase: 1 as const, // FIXED: Explicit type assertion for setup phase
         status: 'setup',
         isAutoCalling: false,
         soundEnabled: true,
@@ -512,15 +512,15 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute start booking phase command
+   * Execute start booking phase command - FIXED phase numbers
    */
   private async executeStartBookingPhase(command: any, context: CommandContext): Promise<CommandResult> {
     const { settings, tickets } = command.payload;
     const { hostId } = context;
     
     const gameStateUpdates = {
-      phase: 2, // Booking phase
-      status: 'booking'
+      phase: 2 as const, // FIXED: Explicit type assertion for booking phase
+      status: 'booking' as const
     };
     
     const numberSystemUpdates = {
@@ -551,7 +551,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute start playing phase command
+   * Execute start playing phase command - FIXED phase numbers
    */
   private async executeStartPlayingPhase(command: any, context: CommandContext): Promise<CommandResult> {
     const { hostId, currentGame } = context;
@@ -561,8 +561,8 @@ export class CommandProcessor {
     }
     
     const gameStateUpdates = {
-      phase: 3, // Playing phase
-      status: 'paused',
+      phase: 3 as const, // FIXED: Explicit type assertion for playing phase
+      status: 'paused' as const,
       isAutoCalling: false,
       soundEnabled: true,
       winners: currentGame.gameState?.winners || {
@@ -589,7 +589,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute complete game command
+   * Execute complete game command - FIXED phase numbers
    */
   private async executeCompleteGame(command: any, context: CommandContext): Promise<CommandResult> {
     const { reason } = command.payload;
@@ -601,7 +601,7 @@ export class CommandProcessor {
     
     // Update game state to completed
     await this.databaseService.updateGameState(hostId, {
-      phase: 4,
+      phase: 4 as const, // FIXED: Explicit type assertion for completed phase
       status: 'ended',
       isAutoCalling: false
     });
@@ -770,7 +770,7 @@ export class CommandProcessor {
               allPrizesWon: true,
               isAutoCalling: false,
               status: 'ended',
-              phase: 4
+              phase: 4 as const // FIXED: Explicit type assertion
             });
           }
         }
