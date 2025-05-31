@@ -207,47 +207,50 @@ export function useGameController({
     }
   }, [gameState, isGameEnded, allPrizesWon, database, audio, onPrizeWon, onError]);
 
-  // Initialize number calling hook with prize validation
+  // Memoize the number generation callback to prevent infinite re-renders
+  const onNumberGeneratedCallback = useCallback(async (number: number) => {
+    console.log(`🎲 Generating number: ${number}`);
+    setIsProcessing(true);
+    try {
+      // Update database with new number
+      const newCalledNumbers = [...calledNumbers, number];
+      await database.updateNumberSystem({
+        currentNumber: number,
+        calledNumbers: newCalledNumbers
+      });
+
+      // Update local state
+      setCurrentNumber(number);
+      setCalledNumbers(newCalledNumbers);
+      
+      // Trigger callbacks
+      onNumberCalled?.(number);
+      
+      // Announce number
+      await audio.announceNumber(number);
+      
+      // Use optimized validation
+      await validatePrizesForCurrentState(newCalledNumbers);
+      
+      // Check if all numbers have been called
+      if (newCalledNumbers.length >= 90) {
+        await completeGame();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to process number';
+      onError?.(message);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [calledNumbers, database, onNumberCalled, audio, validatePrizesForCurrentState, completeGame, onError]);
+
+  // Initialize number calling hook with stable callback
   const numberCalling = useNumberCalling({
     calledNumbers,
     isPaused,
     isGameEnded,
     allPrizesWon,
-    onNumberGenerated: useCallback(async (number: number) => {
-      console.log(`🎲 Generating number: ${number}`);
-      setIsProcessing(true);
-      try {
-        // Update database with new number
-        const newCalledNumbers = [...calledNumbers, number];
-        await database.updateNumberSystem({
-          currentNumber: number,
-          calledNumbers: newCalledNumbers
-        });
-
-        // Update local state
-        setCurrentNumber(number);
-        setCalledNumbers(newCalledNumbers);
-        
-        // Trigger callbacks
-        onNumberCalled?.(number);
-        
-        // Announce number
-        await audio.announceNumber(number);
-        
-        // Use optimized validation
-        await validatePrizesForCurrentState(newCalledNumbers);
-        
-        // Check if all numbers have been called
-        if (newCalledNumbers.length >= 90) {
-          await completeGame();
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to process number';
-        onError?.(message);
-      } finally {
-        setIsProcessing(false);
-      }
-    }, [calledNumbers, database, onNumberCalled, audio, validatePrizesForCurrentState, completeGame, onError]),
+    onNumberGenerated: onNumberGeneratedCallback,
     onError
   });
 
@@ -310,23 +313,30 @@ export function useGameController({
     await database.updateNumberSystem({ callDelay: delay });
   }, [numberCalling, database]);
 
-  // Enhanced auto-start logic with better state tracking
+  // Enhanced auto-start logic with better state tracking - FIXED to prevent loops
+  const lastStateKeyRef = useRef<string>('');
+  
   useEffect(() => {
+    // Only run this effect when critical state actually changes
     const shouldStart = !isPaused && !isGameEnded && !allPrizesWon && !isProcessing;
-    const hasCalledNumbers = calledNumbers.length > 0;
     const isStatusActive = gameState?.gameState?.status === 'active';
     
-    console.log('🔄 Auto-start check:', {
-      shouldStart,
-      isPaused,
-      isGameEnded,
-      allPrizesWon,
-      isProcessing,
-      hasCalledNumbers,
-      isStatusActive,
-      gameStatus: gameState?.gameState?.status,
-      isAutoCalling: gameState?.gameState?.isAutoCalling
-    });
+    // Prevent excessive logging by only logging when state actually changes
+    const stateKey = `${isPaused}-${isGameEnded}-${allPrizesWon}-${isProcessing}-${isStatusActive}`;
+    
+    if (lastStateKeyRef.current !== stateKey) {
+      console.log('🔄 Auto-start check:', {
+        shouldStart,
+        isPaused,
+        isGameEnded,
+        allPrizesWon,
+        isProcessing,
+        isStatusActive,
+        gameStatus: gameState?.gameState?.status,
+        isAutoCalling: gameState?.gameState?.isAutoCalling
+      });
+      lastStateKeyRef.current = stateKey;
+    }
 
     if (shouldStart && isStatusActive) {
       // Start number calling immediately when conditions are met
@@ -342,8 +352,7 @@ export function useGameController({
       
       return () => clearTimeout(timer);
     }
-  }, [isPaused, isGameEnded, allPrizesWon, isProcessing, gameState?.gameState?.status, 
-      gameState?.gameState?.isAutoCalling, numberCalling]);
+  }, [isPaused, isGameEnded, allPrizesWon, isProcessing, gameState?.gameState?.status, gameState?.gameState?.isAutoCalling, numberCalling.scheduleNext]);
 
   // Manual prize validation trigger (for debugging or manual checks)
   const triggerPrizeValidation = useCallback(async () => {
