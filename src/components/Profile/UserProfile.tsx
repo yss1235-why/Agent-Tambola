@@ -4,8 +4,8 @@ import { updateEmail, updatePassword, reauthenticateWithCredential,
   EmailAuthProvider } from 'firebase/auth';
 import { useAuth } from '@contexts';
 import { LoadingSpinner } from '@components';
-import { handleApiError } from '@utils/errorHandler';
-import { FirebaseUtils } from '../../utils/firebaseUtils';
+import { ref, get, update } from 'firebase/database';
+import { database } from '../../lib/firebase';
 
 interface ProfileData {
   username: string;
@@ -21,6 +21,49 @@ interface ProfileData {
   };
 }
 
+// Simple error handler replacement
+const handleApiError = (error: any, defaultMessage: string): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return defaultMessage;
+};
+
+// Simple Firebase utility replacement
+const readData = async <T>(hostId: string, path: string): Promise<{ success: boolean; data?: T; error?: string }> => {
+  try {
+    const dataRef = ref(database, `hosts/${hostId}/${path}`);
+    const snapshot = await get(dataRef);
+    
+    if (snapshot.exists()) {
+      return { success: true, data: snapshot.val() as T };
+    } else {
+      return { success: false, error: 'Data not found' };
+    }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to read data' 
+    };
+  }
+};
+
+const updateData = async (hostId: string, updates: any): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const hostRef = ref(database, `hosts/${hostId}`);
+    await update(hostRef, updates);
+    return { success: true };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to update data' 
+    };
+  }
+};
+
 export const UserProfile: React.FC = () => {
   const { currentUser } = useAuth();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
@@ -31,8 +74,6 @@ export const UserProfile: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const firebaseUtils = FirebaseUtils.getInstance();
-
   useEffect(() => {
     loadProfileData();
   }, []);
@@ -41,7 +82,7 @@ export const UserProfile: React.FC = () => {
     if (!currentUser?.uid) return;
 
     try {
-      const result = await firebaseUtils.readData<any>(currentUser.uid, 'profile');
+      const result = await readData<any>(currentUser.uid, 'profile');
       
       if (result.success && result.data) {
         setProfileData(result.data);
@@ -67,7 +108,7 @@ export const UserProfile: React.FC = () => {
         lastUpdated: Date.now()
       };
 
-      const result = await firebaseUtils.updateData(currentUser.uid, {
+      const result = await updateData(currentUser.uid, {
         profile: updatedProfile
       });
 
