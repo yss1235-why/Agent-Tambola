@@ -1,4 +1,4 @@
-// src/components/GameControls.tsx
+// src/components/GameControls.tsx - Fixed with better status handling
 import React, { useState, useCallback, useEffect } from 'react';
 import { Play, Pause, StopCircle, Volume2, VolumeX } from 'lucide-react';
 import appConfig from '../config/appConfig';
@@ -27,6 +27,7 @@ function GameControls({
   const [showEndGameConfirm, setShowEndGameConfirm] = useState(false);
   const [isEditingDelay, setIsEditingDelay] = useState(false);
   const [tempDelay, setTempDelay] = useState<number | string>(delaySeconds);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
   
   // Update tempDelay when delaySeconds props changes
   useEffect(() => {
@@ -41,7 +42,7 @@ function GameControls({
     
     // Ensure the value is between 3 and 20
     const validDelay = Math.max(3, Math.min(20, delayValue));
-    console.log(`Submitting delay change to ${validDelay} seconds`);
+    console.log(`⏱️ Submitting delay change to ${validDelay} seconds`);
     onDelayChange(validDelay);
     setIsEditingDelay(false);
   }, [tempDelay, onDelayChange]);
@@ -49,21 +50,53 @@ function GameControls({
   // Handle the confirmation and actually end the game
   const handleEndGame = useCallback(() => {
     // Call the passed down onGameEnd function to handle the game-ending logic
-    console.log('Confirming game end');
+    console.log('🏁 Confirming game end');
     onGameEnd();
     setShowEndGameConfirm(false); // Close the confirmation dialog after confirming
   }, [onGameEnd]);
 
-  // Handler for status change
-  const handleStatusChange = useCallback(() => {
+  // Handler for status change with loading state
+  const handleStatusChange = useCallback(async () => {
     const newStatus = gameStatus === 'active' ? 'paused' : 'active';
-    console.log(`Changing game status from ${gameStatus} to ${newStatus}`);
-    onStatusChange(newStatus);
+    console.log(`🔄 Changing game status from ${gameStatus} to ${newStatus}`);
+    
+    setIsChangingStatus(true);
+    
+    try {
+      await onStatusChange(newStatus);
+      
+      // Add a small delay to show the loading state
+      setTimeout(() => {
+        setIsChangingStatus(false);
+      }, 500);
+    } catch (error) {
+      console.error('❌ Error changing status:', error);
+      setIsChangingStatus(false);
+    }
   }, [gameStatus, onStatusChange]);
 
   // Determine if this is the initial start (not a resume)
   const isInitialStart = gameStatus === 'paused' && 
                          appConfig.gameDefaults.startInPausedState;
+
+  const getStatusButtonText = () => {
+    if (isChangingStatus) {
+      return gameStatus === 'active' ? 'Pausing...' : 'Starting...';
+    }
+    
+    if (gameStatus === 'active') {
+      return 'Pause';
+    }
+    
+    return isInitialStart ? 'Start' : 'Resume';
+  };
+
+  const getStatusButtonIcon = () => {
+    if (gameStatus === 'active') {
+      return <Pause className="w-4 h-4 mr-2" />;
+    }
+    return <Play className="w-4 h-4 mr-2" />;
+  };
 
   return (
     <div className="space-y-4">
@@ -80,6 +113,11 @@ function GameControls({
           {disableControls && (
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
               Controls Disabled
+            </span>
+          )}
+          {isChangingStatus && (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              Updating...
             </span>
           )}
         </div>
@@ -120,6 +158,7 @@ function GameControls({
                   }
                 }}
                 className="w-16 px-2 py-1 border rounded text-sm"
+                autoFocus
               />
               <button
                 onClick={handleDelaySubmit}
@@ -152,29 +191,32 @@ function GameControls({
           {/* Play/Pause button */}
           <button
             onClick={handleStatusChange}
-            disabled={disableControls}
+            disabled={disableControls || isChangingStatus}
             className={`px-4 py-2 rounded-md text-sm font-medium min-w-[100px] flex items-center justify-center
-              ${gameStatus === 'active' ? 'bg-yellow-500 text-white hover:bg-yellow-600' : 'bg-green-500 text-white hover:bg-green-600'}
-              ${disableControls ? 'opacity-50 cursor-not-allowed' : ''}`}
-            title={disableControls ? "Controls disabled - all prizes won or game completed" : (gameStatus === 'active' ? "Pause game" : "Start/Resume game")}
+              ${gameStatus === 'active' 
+                ? 'bg-yellow-500 text-white hover:bg-yellow-600' 
+                : 'bg-green-500 text-white hover:bg-green-600'
+              }
+              ${(disableControls || isChangingStatus) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            title={disableControls 
+              ? "Controls disabled - all prizes won or game completed" 
+              : (gameStatus === 'active' ? "Pause game" : "Start/Resume game")
+            }
           >
-            {gameStatus === 'active' ? (
-              <>
-                <Pause className="w-4 h-4 mr-2" />
-                Pause
-              </>
+            {isChangingStatus ? (
+              <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
             ) : (
-              <>
-                <Play className="w-4 h-4 mr-2" />
-                {isInitialStart ? 'Start' : 'Resume'}
-              </>
+              getStatusButtonIcon()
             )}
+            {getStatusButtonText()}
           </button>
 
           {/* End Game button */}
           <button
             onClick={() => setShowEndGameConfirm(true)}
-            className={`px-4 py-2 rounded-md text-sm font-medium bg-red-500 text-white hover:bg-red-600 min-w-[100px] flex items-center justify-center`}
+            disabled={isChangingStatus}
+            className={`px-4 py-2 rounded-md text-sm font-medium bg-red-500 text-white hover:bg-red-600 min-w-[100px] flex items-center justify-center
+              ${isChangingStatus ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <StopCircle className="w-4 h-4 mr-2" />
             End Game
@@ -207,12 +249,22 @@ function GameControls({
 
       {/* Display info about auto calling */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-blue-800 text-sm">
-        <p className="font-medium">Auto Number Calling {gameStatus === 'active' ? 'is Active' : 'is Paused'}</p>
+        <p className="font-medium">
+          Auto Number Calling {gameStatus === 'active' ? 'is Active' : 'is Paused'}
+          {isChangingStatus && ' (updating...)'}
+        </p>
         <p className="mt-1">
           Numbers will be called automatically every {delaySeconds} seconds when the game is active.
           {gameStatus === 'paused' ? ' Click Start to begin calling numbers.' : ''}
         </p>
-        <p className="mt-1">Press the {gameStatus === 'active' ? 'Pause' : 'Start'} button to {gameStatus === 'active' ? 'pause' : 'start'} the game.</p>
+        <p className="mt-1">
+          Press the {gameStatus === 'active' ? 'Pause' : 'Start'} button to {gameStatus === 'active' ? 'pause' : 'start'} the game.
+        </p>
+        {process.env.NODE_ENV === 'development' && (
+          <p className="mt-2 text-xs text-blue-600">
+            Debug: Status = {gameStatus}, Disabled = {disableControls ? 'Yes' : 'No'}, Changing = {isChangingStatus ? 'Yes' : 'No'}
+          </p>
+        )}
       </div>
     </div>
   );
