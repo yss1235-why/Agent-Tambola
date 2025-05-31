@@ -68,11 +68,14 @@ export interface PrizeValidationHookReturn {
   isValidating: boolean;
 }
 
-// Prize validation result interface for utility functions
+// Prize validation result interface for utility functions - UPDATED
 export interface PrizeValidationResult {
   isWinner: boolean;
   winningTickets: string[];
   prizeType: keyof Game.Winners;
+  playerName: string;
+  phoneNumber: string;
+  allPrizeTypes: string[]; // New: for multiple prizes
 }
 
 // Validation context interface for pure validation functions
