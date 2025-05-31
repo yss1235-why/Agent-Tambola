@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.tsx - FIXED to remove deleted utils import
+// src/contexts/AuthContext.tsx - FIXED TypeScript compilation errors
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { 
   User, 
@@ -46,8 +46,10 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-// FIXED: Simple Firebase utilities to replace deleted firebaseUtils
-const readData = async <T>(hostId: string, path: string): Promise<{ success: boolean; data?: T; error?: string }> => {
+// FIXED: Simple Firebase utilities with proper generic syntax
+type ReadDataResult<T> = { success: boolean; data?: T; error?: string };
+
+const readData = async function<T>(hostId: string, path: string): Promise<ReadDataResult<T>> {
   try {
     const dataRef = ref(database, `hosts/${hostId}/${path}`);
     const snapshot = await get(dataRef);
