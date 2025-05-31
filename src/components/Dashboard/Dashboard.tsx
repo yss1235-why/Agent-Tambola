@@ -176,7 +176,7 @@ function Dashboard() {
       case GAME_PHASES.BOOKING:
         return <BookingPhase currentGame={typedGame} />;
       case GAME_PHASES.PLAYING:
-        return <PlayingPhase currentGame={typedGame} />;
+        return <PlayingPhase />;
       default:
         return (
           <div className="text-center py-12">
