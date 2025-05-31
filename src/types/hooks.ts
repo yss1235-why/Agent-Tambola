@@ -1,10 +1,19 @@
-// src/types/hooks.ts - Updated for simplified validation system
+// src/types/hooks.ts - Fixed interface conflicts
 import type { Game } from './game';
 
-// Shared callback interface for all game hooks
+// Prize win result interface - moved to top to avoid conflicts
+export interface PrizeWinResult {
+  playerId: string;
+  playerName: string;
+  phoneNumber: string;
+  ticketId: string;
+  prizeTypes: string[]; // Multiple prizes
+}
+
+// Shared callback interface for all game hooks - UPDATED
 export interface GameHookCallbacks {
   onNumberCalled?: (number: number) => void;
-  onPrizeWon?: (prizeType: keyof Game.Winners, ticketIds: string[]) => void;
+  onPrizeWon?: (result: PrizeWinResult) => void; // CHANGED: Updated to match new signature
   onQueueChanged?: (queue: number[]) => void;
   onGameComplete?: () => void;
   onError?: (error: string) => void;
