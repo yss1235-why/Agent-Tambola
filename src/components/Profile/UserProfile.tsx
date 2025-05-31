@@ -1,4 +1,4 @@
-// src/components/Profile/UserProfile.tsx - Updated
+// src/components/Profile/UserProfile.tsx - FIXED TypeScript compilation errors
 import React, { useState, useEffect } from 'react';
 import { updateEmail, updatePassword, reauthenticateWithCredential, 
   EmailAuthProvider } from 'firebase/auth';
@@ -32,8 +32,10 @@ const handleApiError = (error: any, defaultMessage: string): string => {
   return defaultMessage;
 };
 
-// Simple Firebase utility replacement
-const readData = async <T>(hostId: string, path: string): Promise<{ success: boolean; data?: T; error?: string }> => {
+// FIXED: Simple Firebase utilities with proper generic syntax
+type ReadDataResult<T> = { success: boolean; data?: T; error?: string };
+
+const readData = async function<T>(hostId: string, path: string): Promise<ReadDataResult<T>> {
   try {
     const dataRef = ref(database, `hosts/${hostId}/${path}`);
     const snapshot = await get(dataRef);
