@@ -115,7 +115,7 @@ export namespace Game {
   }
   
   export interface BookingMetrics {
-    startTime: number;        // Added this property to fix GameSetup.tsx error
+    startTime: number;  // Fixed: Added missing startTime property
     lastBookingTime: number;
     totalBookings: number;
     totalPlayers: number;
