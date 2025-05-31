@@ -1,16 +1,17 @@
-// src/services/index.ts - FIXED to remove deleted BookingManager and fix undefined class references
+// src/services/index.ts - FIXED import/export issues and proper type safety
 // This file centralizes service exports for the new Command Queue Pattern
 
-// NEW: Command Queue Pattern Services
+// Import all services first to ensure they exist
+import { CommandQueue as CmdQueue } from './CommandQueue';
+import { CommandProcessor as CmdProcessor } from './CommandProcessor';
+import { GameDatabaseService as DbService } from './GameDatabaseService';
+
+// NEW: Command Queue Pattern Services - Re-export with explicit names
 export { CommandQueue } from './CommandQueue';
 export { CommandProcessor } from './CommandProcessor';
 
 // EXISTING: Core database service (simplified for command queue)
 export { GameDatabaseService } from './GameDatabaseService';
-
-// REMOVED: BookingManager - functionality moved to CommandProcessor
-// The BookingManager class has been removed in favor of the command queue pattern
-// All booking operations are now handled through commands
 
 // UTILITY: Simple export function to replace complex ExportManager
 export const exportToCSV = (data: any[], filename: string): void => {
@@ -46,138 +47,7 @@ export const showToast = (message: string, type: 'success' | 'error' | 'info' = 
   // This could be enhanced to integrate with a toast library
 };
 
-// DEPRECATED SERVICES - These have been removed after migration
-// 
-// The following services have been deprecated and removed:
-// - BookingManager.ts (replaced by CommandProcessor booking commands)
-// - GameService.ts (replaced by CommandProcessor)
-// - Complex database operations (replaced by simple command methods)
-// - Direct Firebase writes from components (now only CommandProcessor writes)
-//
-// Migration notes:
-// 1. Replace direct BookingManager calls with command queue methods
-// 2. Replace complex useGameDatabase operations with simple read-only subscriptions
-// 3. Replace direct Firebase writes with command sending
-// 4. Use simplified error handling through command results
-
-/*
-BEFORE (deprecated):
-import { BookingManager } from '../services/BookingManager';
-const bookingManager = BookingManager.getInstance();
-await bookingManager.createBooking(hostId, playerData);
-
-AFTER (command queue):
-const { createBooking } = useGame();
-createBooking(playerName, phoneNumber, tickets); // Returns command ID
-*/
-
-/*
-BEFORE (deprecated):
-const databaseService = GameDatabaseService.getInstance();
-await databaseService.batchUpdateGameData(hostId, complexUpdates);
-
-AFTER (command queue):
-const { createBooking } = useGame();
-createBooking(playerName, phoneNumber, tickets); // Command handles complexity
-*/
-
-/*
-BEFORE (deprecated):
-// Complex hooks with database writes
-const { updateGameState, updateNumberSystem } = useGameDatabase();
-await updateGameState({ status: 'active' });
-await updateNumberSystem({ currentNumber: 42 });
-
-AFTER (command queue):
-// Simple command methods
-const { updateGameStatus, callNumber } = useGame();
-updateGameStatus('active');
-callNumber(42);
-*/
-
-// Command Queue Benefits:
-// ✅ Eliminates race conditions (sequential processing)
-// ✅ Reduces Firebase writes by 60% (smart batching)
-// ✅ Centralized error handling
-// ✅ Easier testing and debugging
-// ✅ Simpler component logic
-// ✅ Better performance monitoring
-// ✅ Automatic retry logic for failed operations
-
-// Usage Examples:
-
-/*
-// 1. In GameContext (context provides command methods):
-export function GameProvider({ children, hostId }) {
-  const commandQueue = useCommandQueue({ hostId });
-  
-  return (
-    <GameContext.Provider value={{
-      callNumber: commandQueue.callNumber,
-      updateGameStatus: commandQueue.updateGameStatus,
-      // ... other command methods
-    }}>
-      {children}
-    </GameContext.Provider>
-  );
-}
-
-// 2. In Components (use simple command methods):
-function GameControls() {
-  const { updateGameStatus, isProcessing } = useGame();
-  
-  const handlePause = () => {
-    updateGameStatus('paused'); // Simple command call
-  };
-  
-  return (
-    <button onClick={handlePause} disabled={isProcessing}>
-      Pause Game
-    </button>
-  );
-}
-
-// 3. For Complex Operations (commands handle complexity):
-function BookingForm() {
-  const { createBooking } = useGame();
-  
-  const handleSubmit = (playerData) => {
-    // Command processor handles:
-    // - Validation
-    // - Database updates
-    // - Error handling
-    // - State synchronization
-    createBooking(playerData.name, playerData.phone, selectedTickets);
-  };
-  
-  return <form onSubmit={handleSubmit}>...</form>;
-}
-*/
-
-// Migration Checklist:
-// 
-// ✅ 1. Add new command files (CommandQueue.ts, CommandProcessor.ts, useCommandQueue.ts)
-// ✅ 2. Update GameContext to use command queue
-// ✅ 3. Update components to use command methods
-// ✅ 4. Test each command type individually
-// ✅ 5. Remove deprecated services after verification
-// 
-// Files removed after migration:
-// ✅ src/services/BookingManager.ts - Replaced by CommandProcessor
-// ✅ src/services/GameService.ts - Replaced by CommandProcessor
-// ✅ src/hooks/useGameController.ts - Replaced by useGame() context
-// ✅ src/hooks/useGameState.ts - Replaced by simple command methods
-// ✅ src/hooks/useNumberCalling.ts - Replaced by callNumber command
-// ✅ src/hooks/usePrizeValidation.ts - Now automatic in CommandProcessor
-// ✅ src/utils/firebaseUtils.ts - Replaced by simple Firebase calls
-// ✅ src/utils/errorHandler.ts - Replaced by command result handling
-// 
-// Files simplified but kept:
-// ✅ src/services/GameDatabaseService.ts - Only read operations and optimized writes
-// ✅ src/hooks/useGameDatabase.ts - Only subscription functionality
-// ✅ src/contexts/GameContext.tsx - Simplified to use command queue
-
-// Health Check Function for Command Queue System
+// Health Check Function for Command Queue System - FIXED with proper imports
 export const performSystemHealthCheck = (): {
   healthy: boolean;
   issues: string[];
@@ -195,8 +65,8 @@ export const performSystemHealthCheck = (): {
   };
 
   try {
-    // Check CommandQueue
-    const queue = CommandQueue.getInstance();
+    // Check CommandQueue - use imported class
+    const queue = CmdQueue.getInstance();
     const queueHealth = queue.healthCheck();
     services.commandQueue = queueHealth.healthy;
     
@@ -208,8 +78,8 @@ export const performSystemHealthCheck = (): {
   }
 
   try {
-    // Check CommandProcessor
-    const processor = CommandProcessor.getInstance();
+    // Check CommandProcessor - use imported class
+    const processor = CmdProcessor.getInstance();
     services.commandProcessor = true;
   } catch (error) {
     issues.push('CommandProcessor initialization failed');
@@ -217,8 +87,8 @@ export const performSystemHealthCheck = (): {
   }
 
   try {
-    // Check GameDatabaseService
-    const database = GameDatabaseService.getInstance();
+    // Check GameDatabaseService - use imported class
+    const database = DbService.getInstance();
     services.databaseService = true;
   } catch (error) {
     issues.push('GameDatabaseService initialization failed');
@@ -234,13 +104,13 @@ export const performSystemHealthCheck = (): {
   };
 };
 
-// Debug function for development
+// Debug function for development - FIXED with proper imports
 export const debugCommandQueueSystem = (): void => {
   if (process.env.NODE_ENV === 'development') {
     console.group('🔍 Command Queue System Debug');
     
     try {
-      const queue = CommandQueue.getInstance();
+      const queue = CmdQueue.getInstance();
       queue.debugLog();
       
       const healthCheck = performSystemHealthCheck();
@@ -253,16 +123,44 @@ export const debugCommandQueueSystem = (): void => {
   }
 };
 
-// Export health check and debug functions
+// Service factory for getting instances safely - FIXED with proper type checking
+export const getServiceInstance = (serviceName: string): any => {
+  const validServices = ['CommandQueue', 'CommandProcessor', 'GameDatabaseService'];
+  
+  if (!validServices.includes(serviceName)) {
+    console.error(`❌ Service '${serviceName}' does not exist or has been removed`);
+    console.log('Available services:', validServices);
+    throw new Error(`Service '${serviceName}' is not available`);
+  }
+  
+  switch (serviceName) {
+    case 'CommandQueue':
+      return CmdQueue.getInstance();
+    case 'CommandProcessor':
+      return CmdProcessor.getInstance();
+    case 'GameDatabaseService':
+      return DbService.getInstance();
+    default:
+      throw new Error(`Service '${serviceName}' is not available`);
+  }
+};
+
+// Type guard for ensuring services exist
+export const ensureServiceExists = (serviceName: string): boolean => {
+  const validServices = ['CommandQueue', 'CommandProcessor', 'GameDatabaseService'];
+  
+  if (!validServices.includes(serviceName)) {
+    console.error(`❌ Service '${serviceName}' does not exist or has been removed`);
+    console.log('Available services:', validServices);
+    return false;
+  }
+  
+  return true;
+};
+
+// Export health check and debug functions with fixed names
 export { performSystemHealthCheck as systemHealthCheck, debugCommandQueueSystem as debugSystem };
 
-// REMOVED EXPORTS - These classes/functions no longer exist:
-// export { BookingManager } from './BookingManager'; // REMOVED
-// export { GameService } from './GameService'; // REMOVED  
-// export { ExportManager } from './ExportManager'; // REMOVED
-// export { ValidationService } from './ValidationService'; // REMOVED
-
-// Replacement functions for removed exports:
 
 // Replace BookingManager functionality
 export const createBookingViaCommand = (
@@ -285,35 +183,4 @@ export const gameServiceReplacement = (): void => {
 export const exportManagerReplacement = (): void => {
   console.warn('⚠️ ExportManager has been removed. Use exportToCSV() function instead');
   console.log('Use exportToCSV(data, filename) for simple CSV exports');
-};
-
-// Type guard for ensuring services exist
-export const ensureServiceExists = (serviceName: string): boolean => {
-  const validServices = ['CommandQueue', 'CommandProcessor', 'GameDatabaseService'];
-  
-  if (!validServices.includes(serviceName)) {
-    console.error(`❌ Service '${serviceName}' does not exist or has been removed`);
-    console.log('Available services:', validServices);
-    return false;
-  }
-  
-  return true;
-};
-
-// Service factory for getting instances safely
-export const getServiceInstance = (serviceName: string): any => {
-  if (!ensureServiceExists(serviceName)) {
-    throw new Error(`Service '${serviceName}' is not available`);
-  }
-  
-  switch (serviceName) {
-    case 'CommandQueue':
-      return CommandQueue.getInstance();
-    case 'CommandProcessor':
-      return CommandProcessor.getInstance();
-    case 'GameDatabaseService':
-      return GameDatabaseService.getInstance();
-    default:
-      throw new Error(`Service '${serviceName}' is not available`);
-  }
 };
