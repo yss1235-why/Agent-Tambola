@@ -26,9 +26,16 @@ export function useGameController({
   const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
   const [currentNumber, setCurrentNumber] = useState<number | null>(null);
 
-  // Refs to track the latest state for number calling
+  // Refs to track the latest state for number calling and prevent excessive updates
   const gameStateRef = useRef<Game.CurrentGame | null>(null);
   const isActiveRef = useRef(false);
+  const lastLoggedStateRef = useRef<string>('');
+  const lastSyncedStateRef = useRef<{
+    calledNumbersLength: number;
+    queueLength: number;
+    currentNumber: number | null;
+  }>({ calledNumbersLength: 0, queueLength: 0, currentNumber: null });
+  const autoStartLogRef = useRef<string>('');
 
   // Initialize database hook
   const database = useGameDatabase({
@@ -56,20 +63,28 @@ export function useGameController({
   // Get derived state for other hooks
   const isPaused = gameState?.gameState?.status === 'paused' || !gameState?.gameState?.isAutoCalling;
 
-  // Update refs when state changes
+  // Update refs when state changes - FIXED to prevent excessive logging
   useEffect(() => {
     gameStateRef.current = gameState;
     isActiveRef.current = !isPaused && !isGameEnded && !allPrizesWon;
     
-    console.log('🎮 Game Controller State Update:', {
-      isPaused,
-      isGameEnded,
-      allPrizesWon,
-      status: gameState?.gameState?.status,
-      isAutoCalling: gameState?.gameState?.isAutoCalling,
-      isActiveRef: isActiveRef.current
-    });
-  }, [gameState, isPaused, isGameEnded, allPrizesWon]);
+    // Only log when the state actually changes AND in development mode
+    const currentStateKey = `${isPaused}-${isGameEnded}-${allPrizesWon}-${gameState?.gameState?.status}-${gameState?.gameState?.isAutoCalling}`;
+    
+    if (lastLoggedStateRef.current !== currentStateKey) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🎮 Game Controller State Update:', {
+          isPaused,
+          isGameEnded,
+          allPrizesWon,
+          status: gameState?.gameState?.status,
+          isAutoCalling: gameState?.gameState?.isAutoCalling,
+          isActiveRef: isActiveRef.current
+        });
+      }
+      lastLoggedStateRef.current = currentStateKey;
+    }
+  }, [gameState?.gameState?.status, gameState?.gameState?.isAutoCalling, isPaused, isGameEnded, allPrizesWon]);
 
   // Initialize audio hook
   const audio = useGameAudio({
@@ -254,17 +269,34 @@ export function useGameController({
     onError
   });
 
-  // Sync local state with game state
+  // Sync local state with game state - OPTIMIZED to prevent excessive updates
   useEffect(() => {
     if (gameState) {
-      setCalledNumbers(gameState.numberSystem?.calledNumbers || []);
-      setQueueNumbers(gameState.numberSystem?.queue || []);
-      setCurrentNumber(gameState.numberSystem?.currentNumber || null);
+      const newCalledNumbers = gameState.numberSystem?.calledNumbers || [];
+      const newQueueNumbers = gameState.numberSystem?.queue || [];
+      const newCurrentNumber = gameState.numberSystem?.currentNumber || null;
       
-      // Notify about queue changes
-      onQueueChanged?.(gameState.numberSystem?.queue || []);
+      const lastSynced = lastSyncedStateRef.current;
+      
+      // Only update if actually different to prevent loops
+      if (newCalledNumbers.length !== lastSynced.calledNumbersLength || 
+          newCalledNumbers[newCalledNumbers.length - 1] !== calledNumbers[calledNumbers.length - 1]) {
+        setCalledNumbers(newCalledNumbers);
+        lastSynced.calledNumbersLength = newCalledNumbers.length;
+      }
+      
+      if (newQueueNumbers.length !== lastSynced.queueLength) {
+        setQueueNumbers(newQueueNumbers);
+        onQueueChanged?.(newQueueNumbers);
+        lastSynced.queueLength = newQueueNumbers.length;
+      }
+      
+      if (newCurrentNumber !== lastSynced.currentNumber) {
+        setCurrentNumber(newCurrentNumber);
+        lastSynced.currentNumber = newCurrentNumber;
+      }
     }
-  }, [gameState, onQueueChanged]);
+  }, [gameState?.numberSystem?.calledNumbers?.length, gameState?.numberSystem?.queue?.length, gameState?.numberSystem?.currentNumber]);
 
   // Game control functions with coordination
   const handlePauseGame = useCallback(async () => {
@@ -314,8 +346,6 @@ export function useGameController({
   }, [numberCalling, database]);
 
   // Enhanced auto-start logic with better state tracking - FIXED to prevent loops
-  const lastStateKeyRef = useRef<string>('');
-  
   useEffect(() => {
     // Only run this effect when critical state actually changes
     const shouldStart = !isPaused && !isGameEnded && !allPrizesWon && !isProcessing;
@@ -324,28 +354,34 @@ export function useGameController({
     // Prevent excessive logging by only logging when state actually changes
     const stateKey = `${isPaused}-${isGameEnded}-${allPrizesWon}-${isProcessing}-${isStatusActive}`;
     
-    if (lastStateKeyRef.current !== stateKey) {
-      console.log('🔄 Auto-start check:', {
-        shouldStart,
-        isPaused,
-        isGameEnded,
-        allPrizesWon,
-        isProcessing,
-        isStatusActive,
-        gameStatus: gameState?.gameState?.status,
-        isAutoCalling: gameState?.gameState?.isAutoCalling
-      });
-      lastStateKeyRef.current = stateKey;
+    if (autoStartLogRef.current !== stateKey) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 Auto-start check:', {
+          shouldStart,
+          isPaused,
+          isGameEnded,
+          allPrizesWon,
+          isProcessing,
+          isStatusActive,
+          gameStatus: gameState?.gameState?.status,
+          isAutoCalling: gameState?.gameState?.isAutoCalling
+        });
+      }
+      autoStartLogRef.current = stateKey;
     }
 
     if (shouldStart && isStatusActive) {
       // Start number calling immediately when conditions are met
-      console.log('🎯 Conditions met - starting number calling');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🎯 Conditions met - starting number calling');
+      }
       
       // Small delay to ensure state is properly updated
       const timer = setTimeout(() => {
         if (isActiveRef.current && !isProcessing) {
-          console.log('🎲 Actually starting number generation');
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🎲 Actually starting number generation');
+          }
           numberCalling.scheduleNext();
         }
       }, 200);
