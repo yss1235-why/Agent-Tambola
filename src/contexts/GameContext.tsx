@@ -1,9 +1,8 @@
-// src/contexts/GameContext.tsx - UPDATED to use Command Queue Pattern
-// This replaces the complex game controller with a simple command-based system
-
+// src/contexts/GameContext.tsx - FIXED to remove deleted hooks import and fix callback types
 import React, { createContext, useContext, useState, useMemo, ReactNode, useEffect } from 'react';
+import { ref, onValue, off } from 'firebase/database';
 import { useCommandQueue } from '../hooks/useCommandQueue';
-import { useGameDatabase } from '../hooks/useGameDatabase';
+import { database } from '../lib/firebase';
 import { formatMultiplePrizes } from '../utils/prizeValidation';
 import type { CommandResult, CommandError } from '../types/commands';
 import type { Game } from '../types/game';
@@ -61,6 +60,7 @@ interface GameProviderProps {
 
 export function GameProvider({ children, hostId }: GameProviderProps) {
   // Local state for UI
+  const [currentGame, setCurrentGame] = useState<Game.CurrentGame | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toastNotifications, setToastNotifications] = useState<Array<{
@@ -69,11 +69,38 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
     type: 'success' | 'error' | 'info';
   }>>([]);
 
-  // Use database hook for reading game state only
-  const { gameState: currentGame, subscribeToGame } = useGameDatabase({
-    hostId: hostId || '',
-    onError: (err) => setError(err)
-  });
+  // FIXED: Direct Firebase subscription instead of useGameDatabase hook
+  useEffect(() => {
+    if (!hostId) return;
+
+    setIsLoading(true);
+    
+    const gameRef = ref(database, `hosts/${hostId}/currentGame`);
+    
+    const unsubscribe = onValue(
+      gameRef,
+      (snapshot) => {
+        try {
+          const data = snapshot.exists() ? snapshot.val() as Game.CurrentGame : null;
+          setCurrentGame(data);
+          setIsLoading(false);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Data processing error';
+          setError(errorMessage);
+          setIsLoading(false);
+        }
+      },
+      (error) => {
+        const errorMessage = error instanceof Error ? error.message : 'Subscription error';
+        setError(errorMessage);
+        setIsLoading(false);
+      }
+    );
+
+    return () => {
+      off(gameRef, 'value', unsubscribe);
+    };
+  }, [hostId]);
 
   // Use command queue for all actions
   const commandQueue = useCommandQueue({
@@ -105,20 +132,6 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
       addToast(`Error: ${error.message}`, 'error');
     }
   });
-
-  // Subscribe to game state changes
-  useEffect(() => {
-    if (!hostId) return;
-
-    setIsLoading(true);
-    
-    const unsubscribe = subscribeToGame((game) => {
-      setIsLoading(false);
-      // Game state is automatically updated via useGameDatabase
-    });
-
-    return unsubscribe;
-  }, [hostId, subscribeToGame]);
 
   // Toast notification helpers
   const addToast = (message: string, type: 'success' | 'error' | 'info') => {
