@@ -1,14 +1,17 @@
-// src/services/GameDatabaseService.ts
-import { FirebaseUtils } from '../utils/firebaseUtils';
+// src/services/GameDatabaseService.ts - REPLACE EXISTING FILE
+import { ref, update, get, onValue, off } from 'firebase/database';
+import { database } from '../lib/firebase';
 import type { Game } from '../types/game';
 
 export class GameDatabaseService {
   private static instance: GameDatabaseService;
-  private firebaseUtils: FirebaseUtils;
+  
+  // Optimized batch update system
+  private batchUpdateTimers = new Map<string, NodeJS.Timeout>();
+  private pendingBatchUpdates = new Map<string, Record<string, any>>();
+  private readonly BATCH_DELAY = 500; // ms - collect updates for 500ms then send
 
-  private constructor() {
-    this.firebaseUtils = FirebaseUtils.getInstance();
-  }
+  private constructor() {}
 
   public static getInstance(): GameDatabaseService {
     if (!GameDatabaseService.instance) {
@@ -17,135 +20,235 @@ export class GameDatabaseService {
     return GameDatabaseService.instance;
   }
 
-  // Game State Operations
-  public async updateGameState(hostId: string, updates: Partial<Game.GameState>) {
-    const result = await this.firebaseUtils.updateData(hostId, updates, 'currentGame/gameState');
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update game state');
+  /**
+   * Immediate single update - use for critical data like game status
+   */
+  public async immediateUpdate(hostId: string, path: string, data: any): Promise<void> {
+    try {
+      const fullPath = `hosts/${hostId}/${path}`;
+      const dbRef = ref(database, fullPath);
+      await update(dbRef, data);
+      console.log(`✅ Immediate update: ${fullPath}`);
+    } catch (error) {
+      console.error(`❌ Immediate update failed: ${path}`, error);
+      throw new Error(`Failed to update ${path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  public async getGameState(hostId: string): Promise<Game.GameState | null> {
-    const result = await this.firebaseUtils.readData<Game.GameState>(hostId, 'currentGame/gameState');
-    if (!result.success && result.error !== 'Data not found') {
-      throw new Error(result.error || 'Failed to get game state');
+  /**
+   * Batched update - use for frequent updates like number calling
+   */
+  public batchUpdate(hostId: string, path: string, data: any): void {
+    const batchKey = hostId;
+    
+    // Initialize batch if it doesn't exist
+    if (!this.pendingBatchUpdates.has(batchKey)) {
+      this.pendingBatchUpdates.set(batchKey, {});
     }
-    return result.data || null;
+    
+    // Add to batch
+    const batch = this.pendingBatchUpdates.get(batchKey)!;
+    const fullPath = `hosts/${hostId}/${path}`;
+    
+    // Merge with existing updates for same path
+    if (batch[fullPath] && typeof batch[fullPath] === 'object' && typeof data === 'object') {
+      batch[fullPath] = { ...batch[fullPath], ...data };
+    } else {
+      batch[fullPath] = data;
+    }
+    
+    // Clear existing timer and set new one
+    if (this.batchUpdateTimers.has(batchKey)) {
+      clearTimeout(this.batchUpdateTimers.get(batchKey)!);
+    }
+    
+    this.batchUpdateTimers.set(batchKey, setTimeout(() => {
+      this.flushBatch(batchKey);
+    }, this.BATCH_DELAY));
+    
+    console.log(`⏳ Batched update queued: ${fullPath}`);
   }
 
-  // Number System Operations
-  public async updateNumberSystem(hostId: string, updates: Partial<Game.NumberSystem>) {
-    const result = await this.firebaseUtils.updateData(hostId, updates, 'currentGame/numberSystem');
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update number system');
+  /**
+   * Flush batch immediately
+   */
+  public async flushBatch(hostId: string): Promise<void> {
+    const batchKey = hostId;
+    
+    // Clear timer
+    if (this.batchUpdateTimers.has(batchKey)) {
+      clearTimeout(this.batchUpdateTimers.get(batchKey)!);
+      this.batchUpdateTimers.delete(batchKey);
+    }
+    
+    // Get and clear batch
+    const batch = this.pendingBatchUpdates.get(batchKey);
+    if (!batch || Object.keys(batch).length === 0) {
+      return;
+    }
+    
+    this.pendingBatchUpdates.delete(batchKey);
+    
+    try {
+      await update(ref(database), batch);
+      console.log(`✅ Batch update completed: ${Object.keys(batch).length} updates for ${hostId}`);
+    } catch (error) {
+      console.error(`❌ Batch update failed for ${hostId}:`, error);
+      throw new Error(`Batch update failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  public async getNumberSystem(hostId: string): Promise<Game.NumberSystem | null> {
-    const result = await this.firebaseUtils.readData<Game.NumberSystem>(hostId, 'currentGame/numberSystem');
-    if (!result.success && result.error !== 'Data not found') {
-      throw new Error(result.error || 'Failed to get number system');
+  /**
+   * Enhanced batch update for complex game data - REPLACES the old method
+   */
+  public async batchUpdateGameData(
+    hostId: string,
+    updates: {
+      gameState?: Partial<Game.GameState>;
+      numberSystem?: Partial<Game.NumberSystem>;
+      bookings?: Record<string, Game.Booking | null>;
+      tickets?: Record<string, Partial<Game.Ticket>>;
+      metrics?: Game.BookingMetrics;
+      players?: Record<string, Game.Player | null>;
+      settings?: Partial<Game.Settings>;
     }
-    return result.data || null;
+  ): Promise<void> {
+    const batchUpdates: Record<string, any> = {};
+    
+    // Game state updates
+    if (updates.gameState) {
+      Object.entries(updates.gameState).forEach(([key, value]) => {
+        batchUpdates[`hosts/${hostId}/currentGame/gameState/${key}`] = value;
+      });
+    }
+    
+    // Number system updates
+    if (updates.numberSystem) {
+      Object.entries(updates.numberSystem).forEach(([key, value]) => {
+        batchUpdates[`hosts/${hostId}/currentGame/numberSystem/${key}`] = value;
+      });
+    }
+    
+    // Booking updates (including deletions)
+    if (updates.bookings) {
+      Object.entries(updates.bookings).forEach(([ticketId, booking]) => {
+        batchUpdates[`hosts/${hostId}/currentGame/activeTickets/bookings/${ticketId}`] = booking;
+      });
+    }
+    
+    // Ticket updates
+    if (updates.tickets) {
+      Object.entries(updates.tickets).forEach(([ticketId, ticket]) => {
+        if (ticket === null) {
+          batchUpdates[`hosts/${hostId}/currentGame/activeTickets/tickets/${ticketId}`] = null;
+        } else {
+          Object.entries(ticket).forEach(([key, value]) => {
+            batchUpdates[`hosts/${hostId}/currentGame/activeTickets/tickets/${ticketId}/${key}`] = value;
+          });
+        }
+      });
+    }
+    
+    // Metrics updates
+    if (updates.metrics) {
+      batchUpdates[`hosts/${hostId}/currentGame/bookingMetrics`] = updates.metrics;
+    }
+    
+    // Player updates (including deletions)
+    if (updates.players) {
+      Object.entries(updates.players).forEach(([playerId, player]) => {
+        batchUpdates[`hosts/${hostId}/currentGame/players/${playerId}`] = player;
+      });
+    }
+    
+    // Settings updates
+    if (updates.settings) {
+      Object.entries(updates.settings).forEach(([key, value]) => {
+        batchUpdates[`hosts/${hostId}/currentGame/settings/${key}`] = value;
+      });
+    }
+    
+    if (Object.keys(batchUpdates).length === 0) {
+      return;
+    }
+    
+    try {
+      await update(ref(database), batchUpdates);
+      console.log(`✅ Game data batch update: ${Object.keys(batchUpdates).length} updates for ${hostId}`);
+    } catch (error) {
+      console.error(`❌ Game data batch update failed for ${hostId}:`, error);
+      throw new Error(`Game data update failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
-  // Complete Game Operations
+  /**
+   * Read current game data
+   */
   public async getCurrentGame(hostId: string): Promise<Game.CurrentGame | null> {
-    const result = await this.firebaseUtils.readData<Game.CurrentGame>(hostId, 'currentGame');
-    if (!result.success && result.error !== 'Data not found') {
-      throw new Error(result.error || 'Failed to get current game');
-    }
-    return result.data || null;
-  }
-
-  public async setCurrentGame(hostId: string, game: Game.CurrentGame) {
-    const result = await this.firebaseUtils.setData(hostId, 'currentGame', game);
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to set current game');
-    }
-  }
-
-  public async deleteCurrentGame(hostId: string) {
-    const result = await this.firebaseUtils.deleteData(hostId, 'currentGame');
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to delete current game');
+    try {
+      const gameRef = ref(database, `hosts/${hostId}/currentGame`);
+      const snapshot = await get(gameRef);
+      
+      if (!snapshot.exists()) {
+        return null;
+      }
+      
+      return snapshot.val() as Game.CurrentGame;
+    } catch (error) {
+      console.error('Error getting current game:', error);
+      throw new Error(`Failed to get current game: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Subscription for real-time updates
+  /**
+   * Subscribe to current game with optimized listener
+   */
   public subscribeToCurrentGame(
-    hostId: string, 
+    hostId: string,
     callback: (game: Game.CurrentGame | null, error?: string) => void
   ): () => void {
-    return this.firebaseUtils.subscribeToData<Game.CurrentGame>(
-      hostId, 
-      'currentGame', 
-      callback
+    const gameRef = ref(database, `hosts/${hostId}/currentGame`);
+    
+    const unsubscribe = onValue(
+      gameRef,
+      (snapshot) => {
+        try {
+          const data = snapshot.exists() ? snapshot.val() as Game.CurrentGame : null;
+          callback(data);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Data processing error';
+          callback(null, errorMessage);
+        }
+      },
+      (error) => {
+        const errorMessage = error instanceof Error ? error.message : 'Subscription error';
+        callback(null, errorMessage);
+      }
     );
+
+    return () => {
+      off(gameRef, 'value', unsubscribe);
+    };
   }
 
-  // Settings Operations
-  public async updateGameSettings(hostId: string, settings: Partial<Game.Settings>) {
-    const result = await this.firebaseUtils.updateData(hostId, settings, 'currentGame/settings');
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update game settings');
+  /**
+   * Set complete game data
+   */
+  public async setCurrentGame(hostId: string, game: Game.CurrentGame): Promise<void> {
+    try {
+      const gameRef = ref(database, `hosts/${hostId}/currentGame`);
+      await update(gameRef, game);
+      console.log(`✅ Complete game data set for ${hostId}`);
+    } catch (error) {
+      console.error(`Error setting current game for ${hostId}:`, error);
+      throw new Error(`Failed to set current game: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  public async saveDefaultSettings(hostId: string, settings: Game.Settings) {
-    const result = await this.firebaseUtils.setData(hostId, 'defaultSettings', settings);
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to save default settings');
-    }
-  }
-
-  public async getDefaultSettings(hostId: string): Promise<Game.Settings | null> {
-    const result = await this.firebaseUtils.readData<Game.Settings>(hostId, 'defaultSettings');
-    if (!result.success && result.error !== 'Data not found') {
-      throw new Error(result.error || 'Failed to get default settings');
-    }
-    return result.data || null;
-  }
-
-  // Booking Operations
-  public async updateBookings(hostId: string, bookings: Record<string, Game.Booking>) {
-    const result = await this.firebaseUtils.updateData(hostId, bookings, 'currentGame/activeTickets/bookings');
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update bookings');
-    }
-  }
-
-  public async updateTickets(hostId: string, tickets: Record<string, Game.Ticket>) {
-    const result = await this.firebaseUtils.updateData(hostId, tickets, 'currentGame/activeTickets/tickets');
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update tickets');
-    }
-  }
-
-  public async updatePlayer(hostId: string, playerId: string, player: Game.Player) {
-    const result = await this.firebaseUtils.setData(hostId, `currentGame/players/${playerId}`, player);
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update player');
-    }
-  }
-
-  public async updateBookingMetrics(hostId: string, metrics: Game.BookingMetrics) {
-    const result = await this.firebaseUtils.setData(hostId, 'currentGame/bookingMetrics', metrics);
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update booking metrics');
-    }
-  }
-
-  // Winners Operations
-  public async updateWinners(hostId: string, winners: Partial<Game.Winners>) {
-    const result = await this.firebaseUtils.updateData(hostId, winners, 'currentGame/gameState/winners');
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update winners');
-    }
-  }
-
-  // History Operations
-  public async saveGameToHistory(hostId: string, game: Game.CurrentGame) {
+  /**
+   * Save game to history
+   */
+  public async saveGameToHistory(hostId: string, game: Game.CurrentGame): Promise<void> {
     const timestamp = Date.now();
     const gameSession: Game.GameSession = {
       ...game,
@@ -155,115 +258,178 @@ export class GameDatabaseService {
       endReason: 'Game completed'
     };
 
-    const result = await this.firebaseUtils.setData(hostId, `sessions/${timestamp}`, gameSession);
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to save game to history');
+    try {
+      const historyRef = ref(database, `hosts/${hostId}/sessions/${timestamp}`);
+      await update(historyRef, gameSession);
+      console.log(`✅ Game saved to history: ${timestamp} for ${hostId}`);
+    } catch (error) {
+      console.error(`Error saving game to history for ${hostId}:`, error);
+      throw new Error(`Failed to save game to history: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
+  /**
+   * Update game state only
+   */
+  public async updateGameState(hostId: string, updates: Partial<Game.GameState>): Promise<void> {
+    const batchUpdates: Record<string, any> = {};
+    
+    Object.entries(updates).forEach(([key, value]) => {
+      batchUpdates[`hosts/${hostId}/currentGame/gameState/${key}`] = value;
+    });
+
+    try {
+      await update(ref(database), batchUpdates);
+      console.log(`✅ Game state updated for ${hostId}:`, Object.keys(updates));
+    } catch (error) {
+      console.error(`Error updating game state for ${hostId}:`, error);
+      throw new Error(`Failed to update game state: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Update number system only
+   */
+  public async updateNumberSystem(hostId: string, updates: Partial<Game.NumberSystem>): Promise<void> {
+    const batchUpdates: Record<string, any> = {};
+    
+    Object.entries(updates).forEach(([key, value]) => {
+      batchUpdates[`hosts/${hostId}/currentGame/numberSystem/${key}`] = value;
+    });
+
+    try {
+      await update(ref(database), batchUpdates);
+      console.log(`✅ Number system updated for ${hostId}:`, Object.keys(updates));
+    } catch (error) {
+      console.error(`Error updating number system for ${hostId}:`, error);
+      throw new Error(`Failed to update number system: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Update game settings
+   */
+  public async updateGameSettings(hostId: string, settings: Partial<Game.Settings>): Promise<void> {
+    const batchUpdates: Record<string, any> = {};
+    
+    Object.entries(settings).forEach(([key, value]) => {
+      batchUpdates[`hosts/${hostId}/currentGame/settings/${key}`] = value;
+    });
+
+    try {
+      await update(ref(database), batchUpdates);
+      console.log(`✅ Game settings updated for ${hostId}:`, Object.keys(settings));
+    } catch (error) {
+      console.error(`Error updating game settings for ${hostId}:`, error);
+      throw new Error(`Failed to update game settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Update player information
+   */
+  public async updatePlayer(hostId: string, playerId: string, player: Game.Player): Promise<void> {
+    try {
+      const playerRef = ref(database, `hosts/${hostId}/currentGame/players/${playerId}`);
+      await update(playerRef, player);
+      console.log(`✅ Player updated: ${playerId} for ${hostId}`);
+    } catch (error) {
+      console.error(`Error updating player ${playerId} for ${hostId}:`, error);
+      throw new Error(`Failed to update player: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Update booking metrics
+   */
+  public async updateBookingMetrics(hostId: string, metrics: Game.BookingMetrics): Promise<void> {
+    try {
+      const metricsRef = ref(database, `hosts/${hostId}/currentGame/bookingMetrics`);
+      await update(metricsRef, metrics);
+      console.log(`✅ Booking metrics updated for ${hostId}`);
+    } catch (error) {
+      console.error(`Error updating booking metrics for ${hostId}:`, error);
+      throw new Error(`Failed to update booking metrics: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get default settings
+   */
+  public async getDefaultSettings(hostId: string): Promise<Game.Settings | null> {
+    try {
+      const settingsRef = ref(database, `hosts/${hostId}/defaultSettings`);
+      const snapshot = await get(settingsRef);
+      return snapshot.exists() ? snapshot.val() as Game.Settings : null;
+    } catch (error) {
+      console.error(`Error getting default settings for ${hostId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Save default settings
+   */
+  public async saveDefaultSettings(hostId: string, settings: Game.Settings): Promise<void> {
+    try {
+      const settingsRef = ref(database, `hosts/${hostId}/defaultSettings`);
+      await update(settingsRef, settings);
+      console.log(`✅ Default settings saved for ${hostId}`);
+    } catch (error) {
+      console.error(`Error saving default settings for ${hostId}:`, error);
+      throw new Error(`Failed to save default settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Delete current game
+   */
+  public async deleteCurrentGame(hostId: string): Promise<void> {
+    try {
+      const gameRef = ref(database, `hosts/${hostId}/currentGame`);
+      await update(gameRef, null);
+      console.log(`✅ Current game deleted for ${hostId}`);
+    } catch (error) {
+      console.error(`Error deleting current game for ${hostId}:`, error);
+      throw new Error(`Failed to delete current game: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get game history
+   */
   public async getGameHistory(hostId: string): Promise<Record<string, Game.GameSession> | null> {
-    const result = await this.firebaseUtils.readData<Record<string, Game.GameSession>>(hostId, 'sessions');
-    if (!result.success && result.error !== 'Data not found') {
-      throw new Error(result.error || 'Failed to get game history');
-    }
-    return result.data || null;
-  }
-
-  // Batch Operations for Complex Updates
-  public async batchUpdateGameData(
-    hostId: string,
-    updates: {
-      gameState?: Partial<Game.GameState>;
-      numberSystem?: Partial<Game.NumberSystem>;
-      bookings?: Record<string, Game.Booking>;
-      tickets?: Record<string, Partial<Game.Ticket>>;
-      metrics?: Game.BookingMetrics;
-      players?: Record<string, Game.Player>;
-    }
-  ) {
-    const operations: Array<{ hostId: string; path: string; data: any }> = [];
-
-    if (updates.gameState) {
-      Object.entries(updates.gameState).forEach(([key, value]) => {
-        operations.push({
-          hostId,
-          path: `currentGame/gameState/${key}`,
-          data: value
-        });
-      });
-    }
-
-    if (updates.numberSystem) {
-      Object.entries(updates.numberSystem).forEach(([key, value]) => {
-        operations.push({
-          hostId,
-          path: `currentGame/numberSystem/${key}`,
-          data: value
-        });
-      });
-    }
-
-    if (updates.bookings) {
-      Object.entries(updates.bookings).forEach(([ticketId, booking]) => {
-        operations.push({
-          hostId,
-          path: `currentGame/activeTickets/bookings/${ticketId}`,
-          data: booking
-        });
-      });
-    }
-
-    if (updates.tickets) {
-      Object.entries(updates.tickets).forEach(([ticketId, ticket]) => {
-        operations.push({
-          hostId,
-          path: `currentGame/activeTickets/tickets/${ticketId}`,
-          data: ticket
-        });
-      });
-    }
-
-    if (updates.metrics) {
-      operations.push({
-        hostId,
-        path: 'currentGame/bookingMetrics',
-        data: updates.metrics
-      });
-    }
-
-    if (updates.players) {
-      Object.entries(updates.players).forEach(([playerId, player]) => {
-        operations.push({
-          hostId,
-          path: `currentGame/players/${playerId}`,
-          data: player
-        });
-      });
-    }
-
-    if (operations.length === 0) {
-      return;
-    }
-
-    const result = await this.firebaseUtils.batchUpdate(operations);
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to perform batch update');
+    try {
+      const historyRef = ref(database, `hosts/${hostId}/sessions`);
+      const snapshot = await get(historyRef);
+      return snapshot.exists() ? snapshot.val() as Record<string, Game.GameSession> : null;
+    } catch (error) {
+      console.error(`Error getting game history for ${hostId}:`, error);
+      return null;
     }
   }
 
-  // Host Profile Operations
-  public async updateHostProfile(hostId: string, updates: any) {
-    const result = await this.firebaseUtils.updateData(hostId, updates);
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update host profile');
+  /**
+   * Cleanup method to flush all pending batches
+   */
+  public async cleanup(): Promise<void> {
+    const hostIds = Array.from(this.pendingBatchUpdates.keys());
+    
+    for (const hostId of hostIds) {
+      try {
+        await this.flushBatch(hostId);
+      } catch (error) {
+        console.error(`Failed to flush batch for ${hostId}:`, error);
+      }
     }
-  }
-
-  public async getHostProfile(hostId: string): Promise<any> {
-    const result = await this.firebaseUtils.readData(hostId, '');
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to get host profile');
+    
+    // Clear all timers
+    for (const timer of this.batchUpdateTimers.values()) {
+      clearTimeout(timer);
     }
-    return result.data;
+    this.batchUpdateTimers.clear();
+    this.pendingBatchUpdates.clear();
+    
+    console.log(`✅ Database service cleanup completed`);
   }
 }
