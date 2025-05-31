@@ -1,9 +1,10 @@
-// src/types/commands.ts
+// src/types/commands.ts - FIXED interface extension issues
 // Command type definitions for the Command Queue Pattern
 // This file defines all possible commands that can be sent through the queue
 
 import type { Game } from './game';
 
+// FIXED: Base command interface with proper structure
 export interface BaseCommand {
   id: string;
   type: string;
@@ -11,6 +12,7 @@ export interface BaseCommand {
   hostId: string;
 }
 
+// FIXED: Individual command interfaces with proper inheritance
 export interface CallNumberCommand extends BaseCommand {
   type: 'CALL_NUMBER';
   payload: {
@@ -78,7 +80,7 @@ export interface StartBookingPhaseCommand extends BaseCommand {
 
 export interface StartPlayingPhaseCommand extends BaseCommand {
   type: 'START_PLAYING_PHASE';
-  payload: {};
+  payload: Record<string, never>; // FIXED: Empty object type instead of {}
 }
 
 export interface CompleteGameCommand extends BaseCommand {
@@ -109,7 +111,7 @@ export interface CancelBookingCommand extends BaseCommand {
   };
 }
 
-// Union type of all possible commands
+// FIXED: Union type of all possible commands with proper discrimination
 export type GameCommand = 
   | CallNumberCommand
   | UpdateGameStatusCommand
@@ -125,6 +127,7 @@ export type GameCommand =
   | UpdateSoundSettingsCommand
   | CancelBookingCommand;
 
+// Command result interface
 export interface CommandResult {
   success: boolean;
   command: GameCommand;
@@ -154,9 +157,12 @@ export enum CommandPriority {
   CRITICAL = 3
 }
 
-// Extended command interface with priority
-export interface PriorityCommand extends GameCommand {
-  priority?: CommandPriority;
+// FIXED: Priority command interface without conflicting inheritance
+export interface PriorityCommand {
+  command: GameCommand;
+  priority: CommandPriority;
+  timestamp: number;
+  retryCount: number;
 }
 
 // Command execution statistics
@@ -199,13 +205,13 @@ export interface CommandExecutionOptions {
   skipValidation?: boolean;
 }
 
-// Helper type for creating commands without id and timestamp
-export type CreateCommand<T extends GameCommand> = Omit<T, 'id' | 'timestamp'>;
+// FIXED: Helper type for creating commands without id, timestamp, and hostId
+export type CreateCommand<T extends GameCommand> = Omit<T, 'id' | 'timestamp' | 'hostId'>;
 
 // Helper type for command payloads
 export type CommandPayload<T extends GameCommand> = T['payload'];
 
-// Command factory helper types
+// FIXED: Command factory helper types with proper method signatures
 export interface CommandFactory {
   callNumber: (hostId: string, number: number) => CallNumberCommand;
   updateGameStatus: (hostId: string, status: 'active' | 'paused' | 'ended', isAutoCalling?: boolean) => UpdateGameStatusCommand;
@@ -226,4 +232,148 @@ export interface CommandHelpers {
   generateCommandId: () => string;
   validateCommand: (command: GameCommand, context: CommandContext) => CommandValidationResult;
   createCommandResult: (command: GameCommand, success: boolean, data?: any, error?: string) => CommandResult;
+}
+
+// FIXED: Type guards for command discrimination
+export function isCallNumberCommand(command: GameCommand): command is CallNumberCommand {
+  return command.type === 'CALL_NUMBER';
+}
+
+export function isUpdateGameStatusCommand(command: GameCommand): command is UpdateGameStatusCommand {
+  return command.type === 'UPDATE_GAME_STATUS';
+}
+
+export function isCreateBookingCommand(command: GameCommand): command is CreateBookingCommand {
+  return command.type === 'CREATE_BOOKING';
+}
+
+export function isUpdateBookingCommand(command: GameCommand): command is UpdateBookingCommand {
+  return command.type === 'UPDATE_BOOKING';
+}
+
+export function isUpdatePrizeWinnersCommand(command: GameCommand): command is UpdatePrizeWinnersCommand {
+  return command.type === 'UPDATE_PRIZE_WINNERS';
+}
+
+export function isUpdateGameSettingsCommand(command: GameCommand): command is UpdateGameSettingsCommand {
+  return command.type === 'UPDATE_GAME_SETTINGS';
+}
+
+export function isInitializeGameCommand(command: GameCommand): command is InitializeGameCommand {
+  return command.type === 'INITIALIZE_GAME';
+}
+
+export function isStartBookingPhaseCommand(command: GameCommand): command is StartBookingPhaseCommand {
+  return command.type === 'START_BOOKING_PHASE';
+}
+
+export function isStartPlayingPhaseCommand(command: GameCommand): command is StartPlayingPhaseCommand {
+  return command.type === 'START_PLAYING_PHASE';
+}
+
+export function isCompleteGameCommand(command: GameCommand): command is CompleteGameCommand {
+  return command.type === 'COMPLETE_GAME';
+}
+
+export function isUpdateCallDelayCommand(command: GameCommand): command is UpdateCallDelayCommand {
+  return command.type === 'UPDATE_CALL_DELAY';
+}
+
+export function isUpdateSoundSettingsCommand(command: GameCommand): command is UpdateSoundSettingsCommand {
+  return command.type === 'UPDATE_SOUND_SETTINGS';
+}
+
+export function isCancelBookingCommand(command: GameCommand): command is CancelBookingCommand {
+  return command.type === 'CANCEL_BOOKING';
+}
+
+// Command factory implementation
+export const createCommandFactory = (generateId: () => string): CommandFactory => ({
+  callNumber: (hostId: string, number: number): CallNumberCommand => ({
+    id: generateId(),
+    type: 'CALL_NUMBER',
+    timestamp: Date.now(),
+    hostId,
+    payload: { number }
+  }),
+
+  updateGameStatus: (hostId: string, status: 'active' | 'paused' | 'ended', isAutoCalling?: boolean): UpdateGameStatusCommand => ({
+    id: generateId(),
+    type: 'UPDATE_GAME_STATUS',
+    timestamp: Date.now(),
+    hostId,
+    payload: { status, isAutoCalling }
+  }),
+
+  createBooking: (hostId: string, playerName: string, phoneNumber: string, tickets: string[]): CreateBookingCommand => ({
+    id: generateId(),
+    type: 'CREATE_BOOKING',
+    timestamp: Date.now(),
+    hostId,
+    payload: { playerName, phoneNumber, tickets }
+  }),
+
+  updatePrizeWinners: (hostId: string, prizeType: keyof Game.Winners, ticketIds: string[], playerName: string, phoneNumber: string, allPrizeTypes: string[]): UpdatePrizeWinnersCommand => ({
+    id: generateId(),
+    type: 'UPDATE_PRIZE_WINNERS',
+    timestamp: Date.now(),
+    hostId,
+    payload: { prizeType, ticketIds, playerName, phoneNumber, allPrizeTypes }
+  }),
+
+  updateGameSettings: (hostId: string, settings: Partial<Game.Settings>): UpdateGameSettingsCommand => ({
+    id: generateId(),
+    type: 'UPDATE_GAME_SETTINGS',
+    timestamp: Date.now(),
+    hostId,
+    payload: settings
+  }),
+
+  completeGame: (hostId: string, reason?: string): CompleteGameCommand => ({
+    id: generateId(),
+    type: 'COMPLETE_GAME',
+    timestamp: Date.now(),
+    hostId,
+    payload: { reason }
+  })
+});
+
+// Utility function to get command priority
+export function getCommandPriority(command: GameCommand): CommandPriority {
+  switch (command.type) {
+    case 'UPDATE_GAME_STATUS':
+    case 'COMPLETE_GAME':
+      return CommandPriority.CRITICAL;
+    
+    case 'CALL_NUMBER':
+    case 'CREATE_BOOKING':
+    case 'UPDATE_PRIZE_WINNERS':
+    case 'INITIALIZE_GAME':
+    case 'START_BOOKING_PHASE':
+    case 'START_PLAYING_PHASE':
+    case 'CANCEL_BOOKING':
+      return CommandPriority.HIGH;
+    
+    case 'UPDATE_BOOKING':
+    case 'UPDATE_GAME_SETTINGS':
+    case 'UPDATE_CALL_DELAY':
+    case 'UPDATE_SOUND_SETTINGS':
+      return CommandPriority.NORMAL;
+    
+    default:
+      return CommandPriority.LOW;
+  }
+}
+
+// Utility function to validate command structure
+export function validateCommandStructure(command: any): command is GameCommand {
+  return (
+    typeof command === 'object' &&
+    command !== null &&
+    typeof command.id === 'string' &&
+    typeof command.type === 'string' &&
+    typeof command.timestamp === 'number' &&
+    typeof command.hostId === 'string' &&
+    typeof command.payload === 'object'
+  );
 }
