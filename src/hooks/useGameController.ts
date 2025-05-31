@@ -1,15 +1,25 @@
-// src/hooks/useGameController.ts - Fixed auto-calling issue
+// src/hooks/useGameController.ts - Updated for optimized validation
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useGameDatabase } from './useGameDatabase';
 import { useNumberCalling } from './useNumberCalling';
 import { useGameState } from './useGameState';
 import { useGameAudio } from './useGameAudio';
-import { validateAllPrizes, ValidationContext, PrizeValidationResult } from '../utils/prizeValidation';
+import { validateAllPrizes, ValidationContext, formatMultiplePrizes } from '../utils/prizeValidation';
 import type { GameHookCallbacks, GameControllerState } from '../types/hooks';
 import type { Game } from '../types/game';
 
+// Updated interface for prize win results
+export interface PrizeWinResult {
+  playerId: string;
+  playerName: string;
+  phoneNumber: string;
+  ticketId: string;
+  prizeTypes: string[]; // Multiple prizes
+}
+
 interface UseGameControllerProps extends GameHookCallbacks {
   hostId: string;
+  onPrizeWon?: (result: PrizeWinResult) => void; // Updated callback
 }
 
 export function useGameController({
@@ -77,7 +87,7 @@ export function useGameController({
     onError
   });
 
-  // Simplified prize validation function
+  // **UPDATED: Optimized prize validation using new system**
   const validatePrizesForCurrentState = useCallback(async (newCalledNumbers: number[]): Promise<void> => {
     if (!gameState || isGameEnded || allPrizesWon) {
       return;
@@ -111,32 +121,63 @@ export function useGameController({
     }
 
     try {
+      console.log('🔍 Running optimized prize validation...');
       const validationResults = validateAllPrizes(context);
       
       if (validationResults.length > 0) {
+        console.log(`🏆 Found ${validationResults.length} prize winner(s)`);
+        
         // Process each winning result
         const winnersUpdate: Partial<Game.Winners> = {};
         let hasNewWinners = false;
+        const processedPlayers = new Set<string>();
 
         for (const result of validationResults) {
           if (result.isWinner && result.winningTickets.length > 0) {
-            const existingWinners = context.currentWinners[result.prizeType] || [];
+            const playerKey = `${result.playerName}-${result.phoneNumber}`;
             
-            // Add new winners to existing list
-            winnersUpdate[result.prizeType] = [
-              ...existingWinners,
-              ...result.winningTickets
-            ];
+            // Avoid duplicate processing for same player
+            if (processedPlayers.has(playerKey)) {
+              continue;
+            }
+            processedPlayers.add(playerKey);
+
+            // **NEW: Handle multiple prizes for the same result**
+            const multiplePrizes = result.allPrizeTypes || [result.prizeType.replace(/([A-Z])/g, ' $1').trim()];
             
-            hasNewWinners = true;
+            // Update winners for each prize type
+            for (const prizeTypeStr of multiplePrizes) {
+              const prizeKey = prizeTypeStr.toLowerCase().replace(/\s+/g, '') as keyof Game.Winners;
+              
+              if (context.activePrizes[prizeKey]) {
+                const existingWinners = context.currentWinners[prizeKey] || [];
+                
+                // Add new winners to existing list
+                winnersUpdate[prizeKey] = [
+                  ...existingWinners,
+                  ...result.winningTickets
+                ];
+                
+                hasNewWinners = true;
+                console.log(`🏆 Prize won: ${prizeTypeStr} by ${result.playerName} with tickets ${result.winningTickets.join(', ')}`);
+              }
+            }
             
-            // Play prize win sound
-            await audio.playPrizeWinSound(result.prizeType);
+            // **NEW: Play prize win sound for primary prize**
+            const primaryPrizeKey = result.prizeType;
+            await audio.playPrizeWinSound(primaryPrizeKey);
             
-            // Trigger callback with winner information
-            onPrizeWon?.(result.prizeType, result.winningTickets);
+            // **NEW: Create combined prize win result**
+            const prizeWinResult: PrizeWinResult = {
+              playerId: `${result.playerName}-${result.phoneNumber}`,
+              playerName: result.playerName,
+              phoneNumber: result.phoneNumber,
+              ticketId: result.winningTickets[0], // Primary ticket
+              prizeTypes: multiplePrizes
+            };
             
-            console.log(`🏆 Prize won: ${result.prizeType} by tickets ${result.winningTickets.join(', ')}`);
+            // **NEW: Trigger callback with combined result**
+            onPrizeWon?.(prizeWinResult);
           }
         }
 
@@ -159,19 +200,19 @@ export function useGameController({
             });
 
           if (allActivePrizesWon) {
+            console.log('🎉 All active prizes won! Completing game...');
             await database.updateGameState({
               allPrizesWon: true,
               isAutoCalling: false,
               status: 'ended',
               phase: 4
             });
-            console.log('🎉 All prizes won! Game completed.');
           }
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Prize validation failed';
-      console.error('Prize validation error:', error);
+      console.error('❌ Prize validation error:', error);
       onError?.(message);
     }
   }, [gameState, isGameEnded, allPrizesWon, database, audio, onPrizeWon, onError]);
@@ -203,7 +244,7 @@ export function useGameController({
         // Announce number
         await audio.announceNumber(number);
         
-        // Validate prizes with new called numbers
+        // **UPDATED: Use optimized validation**
         await validatePrizesForCurrentState(newCalledNumbers);
         
         // Check if all numbers have been called
@@ -366,3 +407,6 @@ export function useGameController({
     resetError
   };
 }
+
+// **NEW: Export the PrizeWinResult type for use in other components**
+export type { PrizeWinResult };
