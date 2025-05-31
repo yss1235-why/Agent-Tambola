@@ -1,4 +1,4 @@
-// src/services/CommandQueue.ts
+// src/services/CommandQueue.ts - FIXED for TypeScript compilation
 // Command queue implementation for sequential command processing
 // This ensures only one command executes at a time, preventing race conditions
 
