@@ -1,15 +1,18 @@
-// src/components/Dashboard/Dashboard.tsx - Updated
+// src/components/Dashboard/Dashboard.tsx - UPDATED to use Command Queue Pattern
+// Simplified dashboard that uses commands instead of complex database operations
+
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { GameDatabaseService } from '../../services/GameDatabaseService';
+import { useGame } from '../../contexts/GameContext';
 import DashboardHeader from './DashboardHeader';
 import GameSetup from './GamePhases/GameSetup/GameSetup';
 import BookingPhase from './GamePhases/BookingPhase/BookingPhase';
 import PlayingPhase from './GamePhases/PlayingPhase/PlayingPhase';
 import { LoadingSpinner } from '@components';
-import { Game, GAME_PHASES, GAME_STATUSES } from '../../types/game';
+import { Game, GAME_PHASES } from '../../types/game';
 import SubscriptionExpiredPrompt from './SubscriptionExpiredPrompt';
 
+// Default settings for new games
 const DEFAULT_PRIZES: Game.Settings['prizes'] = {
   quickFive: true,
   topLine: true,
@@ -23,32 +26,6 @@ const DEFAULT_PRIZES: Game.Settings['prizes'] = {
   secondFullHouse: false,
 };
 
-const DEFAULT_GAME_STATE: Game.GameState = {
-  phase: GAME_PHASES.SETUP,
-  status: GAME_STATUSES.SETUP,
-  isAutoCalling: false,
-  soundEnabled: true,
-  winners: {
-    quickFive: [],
-    topLine: [],
-    middleLine: [],
-    bottomLine: [],
-    corners: [],
-    starCorners: [],
-    halfSheet: [],
-    fullSheet: [],
-    fullHouse: [],
-    secondFullHouse: []
-  }
-};
-
-const DEFAULT_NUMBER_SYSTEM: Game.NumberSystem = {
-  callDelay: 5,
-  currentNumber: null,
-  calledNumbers: [],
-  queue: []
-};
-
 const DEFAULT_SETTINGS: Game.Settings = {
   maxTickets: 90,
   selectedTicketSet: 1,
@@ -59,141 +36,108 @@ const DEFAULT_SETTINGS: Game.Settings = {
 
 function Dashboard() {
   const { currentUser, userProfile, isSubscriptionValid } = useAuth();
-  const [currentGame, setCurrentGame] = useState<Game.CurrentGame | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  
+  // Get game state and command methods from context
+  const { 
+    currentGame, 
+    isLoading: gameLoading, 
+    error: gameError,
+    initializeGame,
+    isProcessing 
+  } = useGame();
+  
   const [error, setError] = useState<string | null>(null);
-  const [isInitializingGame, setIsInitializingGame] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
 
-  const databaseService = GameDatabaseService.getInstance();
-
+  // Sync errors from game context
   useEffect(() => {
-    if (!currentUser?.uid) return;
+    if (gameError) {
+      setError(gameError);
+    }
+  }, [gameError]);
 
-    const unsubscribe = databaseService.subscribeToCurrentGame(
-      currentUser.uid,
-      (gameData, error) => {
-        setIsLoading(true);
-        
-        if (error) {
-          console.error('Error loading game data:', error);
-          setError('Error loading game data');
-          setIsLoading(false);
-          return;
-        }
-
-        try {
-          if (gameData) {
-            if (!gameData.gameState || !gameData.gameState.phase) {
-              gameData.gameState = { ...DEFAULT_GAME_STATE };
-            }
-            
-            if (!gameData.settings) {
-              gameData.settings = { ...DEFAULT_SETTINGS };
-            } else if (!gameData.settings.prizes) {
-              gameData.settings.prizes = { ...DEFAULT_PRIZES };
-            }
-            
-            if (!gameData.numberSystem) {
-              gameData.numberSystem = { ...DEFAULT_NUMBER_SYSTEM };
-            }
-          }
-          
-          setCurrentGame(gameData);
-          setError(null);
-        } catch (err) {
-          console.error('Error processing game data:', err);
-          setError('Error processing game data');
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    );
-
-    return () => unsubscribe();
-  }, [currentUser?.uid]);
-
-  const initializeNewGame = async () => {
-    if (!currentUser?.uid) return;
-    
-    if (!isSubscriptionValid) {
-      setError('Your subscription has expired. Please renew your subscription to create new games.');
+  /**
+   * Initialize a new game using commands
+   */
+  const handleInitializeNewGame = async () => {
+    if (!currentUser?.uid || !isSubscriptionValid) {
+      setError('Cannot create new game: Invalid subscription or user');
       return;
     }
     
-    setIsInitializingGame(true);
+    setIsInitializing(true);
+    setError(null);
+    
     try {
+      console.log('🎮 Initializing new game with command');
+      
+      // Use default settings (could load from previous game if needed)
       let gameSettings = DEFAULT_SETTINGS;
       
-      const defaultSettings = await databaseService.getDefaultSettings(currentUser.uid);
-      if (defaultSettings) {
-        console.log('Using default settings from previous game');
-        gameSettings = defaultSettings;
-        
-        if (!gameSettings.prizes) {
-          gameSettings.prizes = DEFAULT_PRIZES;
-        }
-        
-        if (!gameSettings.maxTickets) {
-          gameSettings.maxTickets = 90;
-        }
+      // Try to load default settings from a simple API call
+      // Note: This could be enhanced to load from user preferences
+      try {
+        // For now, just use defaults
+        console.log('Using default settings for new game');
+      } catch (settingsError) {
+        console.warn('Could not load default settings, using fallback:', settingsError);
+        gameSettings = DEFAULT_SETTINGS;
       }
       
-      const newGame: Game.CurrentGame = {
-        settings: gameSettings,
-        gameState: DEFAULT_GAME_STATE,
-        numberSystem: DEFAULT_NUMBER_SYSTEM,
-        startTime: Date.now(),
-        activeTickets: {
-          tickets: {},
-          bookings: {}
-        }
-      };
-
-      await databaseService.setCurrentGame(currentUser.uid, newGame);
-      setError(null);
+      // Send command to initialize game
+      const commandId = initializeGame(gameSettings);
+      console.log(`📤 Initialize game command sent: ${commandId}`);
+      
+      // The command processor will handle all the complex initialization
+      // including creating the game state, setting up default tickets, etc.
       
     } catch (err) {
-      console.error('Error initializing game:', err);
-      setError('Failed to initialize new game');
+      console.error('❌ Failed to initialize game:', err);
+      setError('Failed to initialize new game. Please try again.');
     } finally {
-      setIsInitializingGame(false);
+      setIsInitializing(false);
     }
   };
 
+  /**
+   * Render appropriate game phase based on current game state
+   */
   const renderGamePhase = () => {
     if (!currentGame || !currentGame.gameState) {
       return null;
     }
 
     const phase = currentGame.gameState.phase;
-    console.log('Rendering phase:', phase);
-
-    const typedGame = currentGame as Game.CurrentGame;
+    console.log('📍 Rendering phase:', phase);
 
     switch (phase) {
       case GAME_PHASES.SETUP:
-        return <GameSetup currentGame={typedGame} />;
+        return <GameSetup currentGame={currentGame} />;
+        
       case GAME_PHASES.BOOKING:
-        return <BookingPhase currentGame={typedGame} />;
+        return <BookingPhase currentGame={currentGame} />;
+        
       case GAME_PHASES.PLAYING:
         return <PlayingPhase />;
+        
+      case GAME_PHASES.COMPLETED:
       default:
         return (
           <div className="text-center py-12">
             <h2 className="text-2xl font-semibold text-gray-900">
-              Game Completed or Invalid Phase
+              Game Completed
             </h2>
             <p className="mt-2 text-gray-600">
-              Start a new game to continue
+              The game has ended. Start a new game to continue.
             </p>
             {isSubscriptionValid ? (
               <button
-                onClick={initializeNewGame}
-                disabled={isInitializingGame}
+                onClick={handleInitializeNewGame}
+                disabled={isInitializing || isProcessing}
                 className={`mt-4 px-6 py-2 rounded-lg bg-blue-500 text-white font-medium
-                  ${isInitializingGame ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
+                  ${isInitializing || isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
               >
-                {isInitializingGame ? 'Initializing...' : 'Start New Game'}
+                {isInitializing ? 'Initializing...' : 'Start New Game'}
               </button>
             ) : (
               <SubscriptionExpiredPrompt />
@@ -203,10 +147,14 @@ function Dashboard() {
     }
   };
 
-  if (isLoading) {
+  // Loading state
+  if (gameLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <LoadingSpinner size="large" />
+        <div className="text-center">
+          <LoadingSpinner size="large" />
+          <p className="mt-4 text-gray-600">Loading game data...</p>
+        </div>
       </div>
     );
   }
@@ -219,6 +167,32 @@ function Dashboard() {
       />
       
       <main className="px-6 py-4">
+        {/* Command Queue Status (for debugging in development) */}
+        {process.env.NODE_ENV === 'development' && isProcessing && (
+          <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-center">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
+              <span className="text-sm text-blue-800">Commands are being processed...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-md p-4 text-red-700">
+            <div className="flex items-center justify-between">
+              <span>{error}</span>
+              <button 
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-600"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Game Content */}
         {currentGame ? (
           <div className="mt-6">
             {renderGamePhase()}
@@ -233,22 +207,23 @@ function Dashboard() {
             </p>
             {isSubscriptionValid ? (
               <button
-                onClick={initializeNewGame}
-                disabled={isInitializingGame}
+                onClick={handleInitializeNewGame}
+                disabled={isInitializing || isProcessing}
                 className={`mt-4 px-6 py-2 rounded-lg bg-blue-500 text-white font-medium
-                  ${isInitializingGame ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
+                  ${isInitializing || isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
               >
-                {isInitializingGame ? 'Initializing...' : 'Start New Game'}
+                {isInitializing ? (
+                  <span className="flex items-center">
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                    Initializing...
+                  </span>
+                ) : (
+                  'Start New Game'
+                )}
               </button>
             ) : (
               <SubscriptionExpiredPrompt />
             )}
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-4 bg-red-50 border border-red-200 rounded-md p-4 text-red-700">
-            {error}
           </div>
         )}
       </main>
