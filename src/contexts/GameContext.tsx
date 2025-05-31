@@ -1,12 +1,17 @@
-// src/contexts/GameContext.tsx - Updated with optimized controller
+// src/contexts/GameContext.tsx - Updated with correct imports
 import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
-import { useOptimizedGameController } from '../hooks/useOptimizedGameController';
-import { formatMultiplePrizes, PrizeWinResult } from '../utils/optimizedPrizeValidation';
+import { useGameController, PrizeWinResult } from '../hooks/useGameController'; // Updated import
+import { formatMultiplePrizes } from '../utils/prizeValidation'; // Updated import
 import type { Game } from '../types/game';
 
-type GameContextType = ReturnType<typeof useOptimizedGameController> & {
+type GameContextType = ReturnType<typeof useGameController> & {
   hostId: string | null;
   announceWinner: (winner: PrizeWinResult) => void;
+  toastNotifications: Array<{
+    id: string;
+    message: string;
+    type: 'success' | 'error' | 'info';
+  }>;
 };
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -43,7 +48,7 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
     }, 5000);
   };
 
-  const gameController = useOptimizedGameController({
+  const gameController = useGameController({
     hostId: hostId || '',
     onNumberCalled: (number: number) => {
       console.log(`📢 Number called: ${number}`);
