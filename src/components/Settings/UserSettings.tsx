@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AudioManager } from '../../utils/audioManager';
-import { FirebaseUtils } from '../../utils/firebaseUtils';
+import { ref, get, update } from 'firebase/database';
+import { database } from '../../lib/firebase';
 
 interface UserPreferences {
   audio: {
@@ -23,6 +24,38 @@ interface UserPreferences {
     showAnimations: boolean;
   };
 }
+
+// Simple Firebase utility replacement
+const readData = async <T>(hostId: string, path: string): Promise<{ success: boolean; data?: T; error?: string }> => {
+  try {
+    const dataRef = ref(database, `hosts/${hostId}/${path}`);
+    const snapshot = await get(dataRef);
+    
+    if (snapshot.exists()) {
+      return { success: true, data: snapshot.val() as T };
+    } else {
+      return { success: false, error: 'Data not found' };
+    }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to read data' 
+    };
+  }
+};
+
+const setData = async (hostId: string, path: string, data: any): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const dataRef = ref(database, `hosts/${hostId}/${path}`);
+    await update(dataRef, data);
+    return { success: true };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to set data' 
+    };
+  }
+};
 
 export const UserSettings: React.FC = () => {
   const { currentUser } = useAuth();
@@ -51,8 +84,6 @@ export const UserSettings: React.FC = () => {
     type: 'success' | 'error';
   } | null>(null);
 
-  const firebaseUtils = FirebaseUtils.getInstance();
-
   useEffect(() => {
     loadPreferences();
   }, []);
@@ -61,7 +92,7 @@ export const UserSettings: React.FC = () => {
     if (!currentUser) return;
 
     try {
-      const result = await firebaseUtils.readData<UserPreferences>(
+      const result = await readData<UserPreferences>(
         currentUser.uid, 
         'preferences'
       );
@@ -83,7 +114,7 @@ export const UserSettings: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const result = await firebaseUtils.setData(
+      const result = await setData(
         currentUser.uid, 
         'preferences', 
         preferences
