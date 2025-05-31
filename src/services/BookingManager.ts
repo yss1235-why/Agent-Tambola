@@ -61,6 +61,7 @@ export class BookingManager {
       }
 
       const currentMetrics = currentGame.bookingMetrics || {
+        startTime: timestamp, // Fixed: Include startTime when creating fallback
         totalBookings: 0,
         totalPlayers: 0,
         lastBookingTime: 0
@@ -92,6 +93,7 @@ export class BookingManager {
       });
 
       const updatedMetrics: Game.BookingMetrics = {
+        startTime: currentMetrics.startTime, // Fixed: Include startTime
         lastBookingTime: timestamp,
         totalBookings: currentMetrics.totalBookings + data.tickets.length,
         totalPlayers: currentMetrics.totalPlayers + 1
@@ -223,8 +225,10 @@ export class BookingManager {
       const currentMetrics = currentGame.bookingMetrics;
       if (currentMetrics) {
         batchUpdates.metrics = {
-          ...currentMetrics,
-          totalBookings: Math.max(0, currentMetrics.totalBookings - ticketIds.length)
+          startTime: currentMetrics.startTime, // Fixed: Include startTime
+          lastBookingTime: currentMetrics.lastBookingTime,
+          totalBookings: Math.max(0, currentMetrics.totalBookings - ticketIds.length),
+          totalPlayers: currentMetrics.totalPlayers // Keep the same player count since we're just canceling tickets
         };
       }
 
