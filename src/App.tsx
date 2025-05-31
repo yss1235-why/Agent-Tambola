@@ -42,8 +42,10 @@ const ProtectedRoute: React.FC<{ element: React.ReactNode }> = ({ element }) => 
 const GameRoutes: React.FC<{ element: React.ReactNode }> = ({ element }) => {
   const { currentUser } = useAuth();
   
-  // Use configured host ID if present, otherwise use current user's ID
-  const hostId = appConfig.hostUID || currentUser?.uid || '';
+  // FIXED: Use authenticated user's UID instead of config hostUID
+  const hostId = currentUser?.uid || '';
+  
+  console.log('GameRoutes - Using hostId:', hostId, 'for user:', currentUser?.email);
   
   return (
     <GameProvider hostId={hostId}>
