@@ -149,7 +149,12 @@ function PlayingPhaseView({
   }, [winners, lastWinnerCount]);
 
   const handleWinnerNotification = (prizeType: string, playerName: string) => {
-    setToastMessage(`${playerName} won ${prizeType}! 🏆`);
+    // Handle both single and multiple prize notifications
+    const message = prizeType.includes('+') 
+      ? `${playerName} won multiple prizes: ${prizeType}! 🏆`
+      : `${playerName} won ${prizeType}! 🏆`;
+      
+    setToastMessage(message);
     setToastType('success');
     setShowToast(true);
   };
