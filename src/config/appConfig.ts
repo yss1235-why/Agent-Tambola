@@ -1,9 +1,9 @@
-// src/config/appConfig.ts - Updated for simplified validation system
+// src/config/appConfig.ts - Secure configuration with hardcoded host UID
 // Central configuration file for the Tambola Host System
 
 const appConfig = {
-  // Host Configuration
-  hostUID: "yaeHFN8qEWRBoBNq4yRuSjgY2w43", // Replace with your actual host UID
+  // Host Configuration - SECURITY: Only this specific UID can access the game data
+  hostUID: "yaeHFN8qEWRBoBNq4yRuSjgY2w43", // Your designated host UID
   
   // Application Information
   appTitle: "Jo's & Nim's",
