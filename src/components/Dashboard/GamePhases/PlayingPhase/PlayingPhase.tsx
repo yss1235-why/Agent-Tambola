@@ -58,7 +58,7 @@ const PlayingPhase: React.FC = () => {
       
       const isComplete = currentGame.gameState?.status === 'ended' || 
                         currentGame.gameState?.phase === 4 ||
-                        currentGame.gameState?.allPrizesWon;
+                        currentGame.gameState?.allPrizesWon === true; // Fixed type issue
       
       setIsLoading(false);
       setIsGameComplete(isComplete);
@@ -67,7 +67,7 @@ const PlayingPhase: React.FC = () => {
       
       // Update auto-calling state
       const shouldAutoCalling = currentGame.gameState?.status === 'active' && 
-                               currentGame.gameState?.isAutoCalling && 
+                               currentGame.gameState?.isAutoCalling === true && // Fixed type issue
                                !isComplete;
       
       if (shouldAutoCalling !== isAutoCallingRef.current) {
@@ -210,7 +210,7 @@ const PlayingPhase: React.FC = () => {
    * Handle status change using command
    */
   const handleStatusChange = useCallback(async (status: 'active' | 'paused') => {
-    if (currentGame?.gameState?.allPrizesWon && status === 'active') {
+    if (currentGame?.gameState?.allPrizesWon === true && status === 'active') {
       setError('Cannot resume game: All prizes have been won');
       return;
     }
@@ -295,7 +295,7 @@ const PlayingPhase: React.FC = () => {
   };
 
   const isPaused = currentGame.gameState?.status === 'paused' || !currentGame.gameState?.isAutoCalling;
-  const allPrizesWon = currentGame.gameState?.allPrizesWon || false;
+  const allPrizesWon = currentGame.gameState?.allPrizesWon === true; // Fixed type issue
 
   return (
     <div className="space-y-4">
