@@ -1,5 +1,5 @@
-// src/services/GameDatabaseService.ts - REPLACE EXISTING FILE
-import { ref, update, get, onValue, off } from 'firebase/database';
+// src/services/GameDatabaseService.ts - COMPLETE VERSION
+import { ref, update, get, onValue, off, remove } from 'firebase/database';
 import { database } from '../lib/firebase';
 import type { Game } from '../types/game';
 
@@ -382,12 +382,12 @@ export class GameDatabaseService {
   }
 
   /**
-   * Delete current game
+   * Delete current game - FIXED VERSION
    */
   public async deleteCurrentGame(hostId: string): Promise<void> {
     try {
       const gameRef = ref(database, `hosts/${hostId}/currentGame`);
-      await update(gameRef, null);
+      await remove(gameRef);
       console.log(`✅ Current game deleted for ${hostId}`);
     } catch (error) {
       console.error(`Error deleting current game for ${hostId}:`, error);
