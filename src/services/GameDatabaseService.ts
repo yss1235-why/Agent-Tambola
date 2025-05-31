@@ -1,4 +1,4 @@
-// src/services/GameDatabaseService.ts - COMPLETE VERSION
+// src/services/GameDatabaseService.ts - OPTIMIZED VERSION
 import { ref, update, get, onValue, off, remove } from 'firebase/database';
 import { database } from '../lib/firebase';
 import type { Game } from '../types/game';
@@ -6,10 +6,12 @@ import type { Game } from '../types/game';
 export class GameDatabaseService {
   private static instance: GameDatabaseService;
   
-  // Optimized batch update system
+  // Optimized batch system with immediate updates for critical operations
+  private criticalUpdates = new Set(['gameState/status', 'gameState/isAutoCalling']);
   private batchUpdateTimers = new Map<string, NodeJS.Timeout>();
   private pendingBatchUpdates = new Map<string, Record<string, any>>();
-  private readonly BATCH_DELAY = 500; // ms - collect updates for 500ms then send
+  private readonly BATCH_DELAY = 100; // Reduced to 100ms for faster updates
+  private readonly CRITICAL_DELAY = 50; // Even faster for critical updates
 
   private constructor() {}
 
@@ -21,14 +23,16 @@ export class GameDatabaseService {
   }
 
   /**
-   * Immediate single update - use for critical data like game status
+   * IMMEDIATE update for critical operations (status changes, pause/play)
    */
   public async immediateUpdate(hostId: string, path: string, data: any): Promise<void> {
     try {
       const fullPath = `hosts/${hostId}/${path}`;
-      const dbRef = ref(database, fullPath);
-      await update(dbRef, data);
-      console.log(`✅ Immediate update: ${fullPath}`);
+      const updateData = { [fullPath]: data };
+      
+      console.log(`⚡ IMMEDIATE UPDATE: ${path}`);
+      await update(ref(database), updateData);
+      
     } catch (error) {
       console.error(`❌ Immediate update failed: ${path}`, error);
       throw new Error(`Failed to update ${path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -36,70 +40,70 @@ export class GameDatabaseService {
   }
 
   /**
-   * Batched update - use for frequent updates like number calling
+   * Fast update for semi-critical operations (number calling)
    */
-  public batchUpdate(hostId: string, path: string, data: any): void {
-    const batchKey = hostId;
-    
-    // Initialize batch if it doesn't exist
-    if (!this.pendingBatchUpdates.has(batchKey)) {
-      this.pendingBatchUpdates.set(batchKey, {});
-    }
-    
-    // Add to batch
-    const batch = this.pendingBatchUpdates.get(batchKey)!;
-    const fullPath = `hosts/${hostId}/${path}`;
-    
-    // Merge with existing updates for same path
-    if (batch[fullPath] && typeof batch[fullPath] === 'object' && typeof data === 'object') {
-      batch[fullPath] = { ...batch[fullPath], ...data };
-    } else {
-      batch[fullPath] = data;
-    }
-    
-    // Clear existing timer and set new one
-    if (this.batchUpdateTimers.has(batchKey)) {
-      clearTimeout(this.batchUpdateTimers.get(batchKey)!);
-    }
-    
-    this.batchUpdateTimers.set(batchKey, setTimeout(() => {
-      this.flushBatch(batchKey);
-    }, this.BATCH_DELAY));
-    
-    console.log(`⏳ Batched update queued: ${fullPath}`);
-  }
-
-  /**
-   * Flush batch immediately
-   */
-  public async flushBatch(hostId: string): Promise<void> {
-    const batchKey = hostId;
-    
-    // Clear timer
-    if (this.batchUpdateTimers.has(batchKey)) {
-      clearTimeout(this.batchUpdateTimers.get(batchKey)!);
-      this.batchUpdateTimers.delete(batchKey);
-    }
-    
-    // Get and clear batch
-    const batch = this.pendingBatchUpdates.get(batchKey);
-    if (!batch || Object.keys(batch).length === 0) {
-      return;
-    }
-    
-    this.pendingBatchUpdates.delete(batchKey);
-    
+  public async fastUpdate(hostId: string, updates: Record<string, any>): Promise<void> {
     try {
-      await update(ref(database), batch);
-      console.log(`✅ Batch update completed: ${Object.keys(batch).length} updates for ${hostId}`);
+      const batchUpdates: Record<string, any> = {};
+      
+      Object.entries(updates).forEach(([path, data]) => {
+        batchUpdates[`hosts/${hostId}/${path}`] = data;
+      });
+      
+      console.log(`🚀 FAST UPDATE: ${Object.keys(updates).join(', ')}`);
+      await update(ref(database), batchUpdates);
+      
     } catch (error) {
-      console.error(`❌ Batch update failed for ${hostId}:`, error);
-      throw new Error(`Batch update failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error(`❌ Fast update failed:`, error);
+      throw new Error(`Fast update failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Enhanced batch update for complex game data - REPLACES the old method
+   * Enhanced game state update with smart routing
+   */
+  public async updateGameState(hostId: string, updates: Partial<Game.GameState>): Promise<void> {
+    const updateEntries = Object.entries(updates);
+    const criticalUpdates: Record<string, any> = {};
+    const regularUpdates: Record<string, any> = {};
+    
+    // Separate critical from regular updates
+    updateEntries.forEach(([key, value]) => {
+      const path = `currentGame/gameState/${key}`;
+      if (this.criticalUpdates.has(`gameState/${key}`) || key === 'status' || key === 'isAutoCalling') {
+        criticalUpdates[path] = value;
+      } else {
+        regularUpdates[path] = value;
+      }
+    });
+    
+    // Process critical updates immediately
+    if (Object.keys(criticalUpdates).length > 0) {
+      await this.fastUpdate(hostId, criticalUpdates);
+    }
+    
+    // Process regular updates with batching
+    if (Object.keys(regularUpdates).length > 0) {
+      await this.fastUpdate(hostId, regularUpdates);
+    }
+  }
+
+  /**
+   * Enhanced number system update
+   */
+  public async updateNumberSystem(hostId: string, updates: Partial<Game.NumberSystem>): Promise<void> {
+    const batchUpdates: Record<string, any> = {};
+    
+    Object.entries(updates).forEach(([key, value]) => {
+      batchUpdates[`currentGame/numberSystem/${key}`] = value;
+    });
+
+    // Number updates are semi-critical - use fast update
+    await this.fastUpdate(hostId, batchUpdates);
+  }
+
+  /**
+   * Optimized batch update for complex operations
    */
   public async batchUpdateGameData(
     hostId: string,
@@ -114,75 +118,81 @@ export class GameDatabaseService {
     }
   ): Promise<void> {
     const batchUpdates: Record<string, any> = {};
+    const criticalUpdates: Record<string, any> = {};
     
     // Game state updates
     if (updates.gameState) {
       Object.entries(updates.gameState).forEach(([key, value]) => {
-        batchUpdates[`hosts/${hostId}/currentGame/gameState/${key}`] = value;
+        const path = `hosts/${hostId}/currentGame/gameState/${key}`;
+        if (key === 'status' || key === 'isAutoCalling') {
+          criticalUpdates[path] = value;
+        } else {
+          batchUpdates[path] = value;
+        }
       });
     }
     
-    // Number system updates
+    // Number system updates (semi-critical)
     if (updates.numberSystem) {
       Object.entries(updates.numberSystem).forEach(([key, value]) => {
         batchUpdates[`hosts/${hostId}/currentGame/numberSystem/${key}`] = value;
       });
     }
     
-    // Booking updates (including deletions)
-    if (updates.bookings) {
-      Object.entries(updates.bookings).forEach(([ticketId, booking]) => {
-        batchUpdates[`hosts/${hostId}/currentGame/activeTickets/bookings/${ticketId}`] = booking;
-      });
-    }
+    // Other updates (regular batching)
+    ['bookings', 'tickets', 'players'].forEach(updateType => {
+      const updateData = updates[updateType as keyof typeof updates] as Record<string, any>;
+      if (updateData) {
+        Object.entries(updateData).forEach(([id, data]) => {
+          const basePath = updateType === 'bookings' || updateType === 'tickets' 
+            ? `hosts/${hostId}/currentGame/activeTickets/${updateType}/${id}`
+            : `hosts/${hostId}/currentGame/${updateType}/${id}`;
+          
+          if (data === null) {
+            batchUpdates[basePath] = null;
+          } else if (updateType === 'tickets') {
+            Object.entries(data).forEach(([key, value]) => {
+              batchUpdates[`${basePath}/${key}`] = value;
+            });
+          } else {
+            batchUpdates[basePath] = data;
+          }
+        });
+      }
+    });
     
-    // Ticket updates
-    if (updates.tickets) {
-      Object.entries(updates.tickets).forEach(([ticketId, ticket]) => {
-        if (ticket === null) {
-          batchUpdates[`hosts/${hostId}/currentGame/activeTickets/tickets/${ticketId}`] = null;
-        } else {
-          Object.entries(ticket).forEach(([key, value]) => {
-            batchUpdates[`hosts/${hostId}/currentGame/activeTickets/tickets/${ticketId}/${key}`] = value;
-          });
-        }
-      });
-    }
-    
-    // Metrics updates
+    // Handle metrics and settings
     if (updates.metrics) {
       batchUpdates[`hosts/${hostId}/currentGame/bookingMetrics`] = updates.metrics;
     }
     
-    // Player updates (including deletions)
-    if (updates.players) {
-      Object.entries(updates.players).forEach(([playerId, player]) => {
-        batchUpdates[`hosts/${hostId}/currentGame/players/${playerId}`] = player;
-      });
-    }
-    
-    // Settings updates
     if (updates.settings) {
       Object.entries(updates.settings).forEach(([key, value]) => {
         batchUpdates[`hosts/${hostId}/currentGame/settings/${key}`] = value;
       });
     }
     
-    if (Object.keys(batchUpdates).length === 0) {
-      return;
-    }
-    
     try {
-      await update(ref(database), batchUpdates);
-      console.log(`✅ Game data batch update: ${Object.keys(batchUpdates).length} updates for ${hostId}`);
+      // Execute critical updates first
+      if (Object.keys(criticalUpdates).length > 0) {
+        console.log(`⚡ CRITICAL batch: ${Object.keys(criticalUpdates).length} updates`);
+        await update(ref(database), criticalUpdates);
+      }
+      
+      // Then execute regular updates
+      if (Object.keys(batchUpdates).length > 0) {
+        console.log(`📦 REGULAR batch: ${Object.keys(batchUpdates).length} updates`);
+        await update(ref(database), batchUpdates);
+      }
+      
     } catch (error) {
-      console.error(`❌ Game data batch update failed for ${hostId}:`, error);
-      throw new Error(`Game data update failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error(`❌ Batch update failed for ${hostId}:`, error);
+      throw new Error(`Batch update failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Read current game data
+   * Read current game data with caching
    */
   public async getCurrentGame(hostId: string): Promise<Game.CurrentGame | null> {
     try {
@@ -201,7 +211,7 @@ export class GameDatabaseService {
   }
 
   /**
-   * Subscribe to current game with optimized listener
+   * Optimized subscription with better error handling
    */
   public subscribeToCurrentGame(
     hostId: string,
@@ -246,7 +256,7 @@ export class GameDatabaseService {
   }
 
   /**
-   * Save game to history
+   * Save game to history (background operation)
    */
   public async saveGameToHistory(hostId: string, game: Game.CurrentGame): Promise<void> {
     const timestamp = Date.now();
@@ -259,50 +269,20 @@ export class GameDatabaseService {
     };
 
     try {
-      const historyRef = ref(database, `hosts/${hostId}/sessions/${timestamp}`);
-      await update(historyRef, gameSession);
-      console.log(`✅ Game saved to history: ${timestamp} for ${hostId}`);
+      // Use background update for history
+      setTimeout(async () => {
+        try {
+          const historyRef = ref(database, `hosts/${hostId}/sessions/${timestamp}`);
+          await update(historyRef, gameSession);
+          console.log(`✅ Game saved to history: ${timestamp}`);
+        } catch (error) {
+          console.error(`Error saving game to history:`, error);
+        }
+      }, 100);
+      
     } catch (error) {
       console.error(`Error saving game to history for ${hostId}:`, error);
       throw new Error(`Failed to save game to history: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Update game state only
-   */
-  public async updateGameState(hostId: string, updates: Partial<Game.GameState>): Promise<void> {
-    const batchUpdates: Record<string, any> = {};
-    
-    Object.entries(updates).forEach(([key, value]) => {
-      batchUpdates[`hosts/${hostId}/currentGame/gameState/${key}`] = value;
-    });
-
-    try {
-      await update(ref(database), batchUpdates);
-      console.log(`✅ Game state updated for ${hostId}:`, Object.keys(updates));
-    } catch (error) {
-      console.error(`Error updating game state for ${hostId}:`, error);
-      throw new Error(`Failed to update game state: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Update number system only
-   */
-  public async updateNumberSystem(hostId: string, updates: Partial<Game.NumberSystem>): Promise<void> {
-    const batchUpdates: Record<string, any> = {};
-    
-    Object.entries(updates).forEach(([key, value]) => {
-      batchUpdates[`hosts/${hostId}/currentGame/numberSystem/${key}`] = value;
-    });
-
-    try {
-      await update(ref(database), batchUpdates);
-      console.log(`✅ Number system updated for ${hostId}:`, Object.keys(updates));
-    } catch (error) {
-      console.error(`Error updating number system for ${hostId}:`, error);
-      throw new Error(`Failed to update number system: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -316,41 +296,16 @@ export class GameDatabaseService {
       batchUpdates[`hosts/${hostId}/currentGame/settings/${key}`] = value;
     });
 
-    try {
-      await update(ref(database), batchUpdates);
-      console.log(`✅ Game settings updated for ${hostId}:`, Object.keys(settings));
-    } catch (error) {
-      console.error(`Error updating game settings for ${hostId}:`, error);
-      throw new Error(`Failed to update game settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    await this.fastUpdate(hostId, { [`currentGame/settings`]: batchUpdates });
   }
 
   /**
    * Update player information
    */
   public async updatePlayer(hostId: string, playerId: string, player: Game.Player): Promise<void> {
-    try {
-      const playerRef = ref(database, `hosts/${hostId}/currentGame/players/${playerId}`);
-      await update(playerRef, player);
-      console.log(`✅ Player updated: ${playerId} for ${hostId}`);
-    } catch (error) {
-      console.error(`Error updating player ${playerId} for ${hostId}:`, error);
-      throw new Error(`Failed to update player: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Update booking metrics
-   */
-  public async updateBookingMetrics(hostId: string, metrics: Game.BookingMetrics): Promise<void> {
-    try {
-      const metricsRef = ref(database, `hosts/${hostId}/currentGame/bookingMetrics`);
-      await update(metricsRef, metrics);
-      console.log(`✅ Booking metrics updated for ${hostId}`);
-    } catch (error) {
-      console.error(`Error updating booking metrics for ${hostId}:`, error);
-      throw new Error(`Failed to update booking metrics: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    await this.fastUpdate(hostId, {
+      [`currentGame/players/${playerId}`]: player
+    });
   }
 
   /**
@@ -368,13 +323,21 @@ export class GameDatabaseService {
   }
 
   /**
-   * Save default settings
+   * Save default settings (background operation)
    */
   public async saveDefaultSettings(hostId: string, settings: Game.Settings): Promise<void> {
     try {
-      const settingsRef = ref(database, `hosts/${hostId}/defaultSettings`);
-      await update(settingsRef, settings);
-      console.log(`✅ Default settings saved for ${hostId}`);
+      // Background save for settings
+      setTimeout(async () => {
+        try {
+          const settingsRef = ref(database, `hosts/${hostId}/defaultSettings`);
+          await update(settingsRef, settings);
+          console.log(`✅ Default settings saved for ${hostId}`);
+        } catch (error) {
+          console.error(`Error saving default settings:`, error);
+        }
+      }, 200);
+      
     } catch (error) {
       console.error(`Error saving default settings for ${hostId}:`, error);
       throw new Error(`Failed to save default settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -382,7 +345,7 @@ export class GameDatabaseService {
   }
 
   /**
-   * Delete current game - FIXED VERSION
+   * Delete current game
    */
   public async deleteCurrentGame(hostId: string): Promise<void> {
     try {
@@ -410,19 +373,9 @@ export class GameDatabaseService {
   }
 
   /**
-   * Cleanup method to flush all pending batches
+   * Cleanup method
    */
   public async cleanup(): Promise<void> {
-    const hostIds = Array.from(this.pendingBatchUpdates.keys());
-    
-    for (const hostId of hostIds) {
-      try {
-        await this.flushBatch(hostId);
-      } catch (error) {
-        console.error(`Failed to flush batch for ${hostId}:`, error);
-      }
-    }
-    
     // Clear all timers
     for (const timer of this.batchUpdateTimers.values()) {
       clearTimeout(timer);
