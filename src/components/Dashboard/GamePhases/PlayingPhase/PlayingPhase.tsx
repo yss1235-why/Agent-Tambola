@@ -1,4 +1,5 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx - Fixed to use context properly
+// ===== COMPLETE FILE 3: src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx =====
+
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -11,9 +12,9 @@ const PlayingPhase: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
-  // Use game controller from context - FIXED: access currentGame correctly
+  // Use game controller from context
   const {
-    currentGame, // NOW: Available from context
+    currentGame,
     isProcessing,
     isPaused,
     currentNumber,
@@ -36,7 +37,7 @@ const PlayingPhase: React.FC = () => {
   const [soundEnabled, setSoundEnabledLocal] = useState(true);
   const [callDelay, setCallDelayLocal] = useState(5);
 
-  // Initialize component
+  // FIXED: Initialize component without constant logging
   useEffect(() => {
     if (!currentUser?.uid) {
       navigate('/login');
@@ -187,23 +188,6 @@ const PlayingPhase: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Debug panel for development */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="bg-gray-100 p-4 rounded-lg border">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Panel - Fixed Controller</h4>
-          <div className="grid grid-cols-2 gap-4 text-xs">
-            <div><strong>Game Status:</strong> {currentGame.gameState?.status || 'unknown'}</div>
-            <div><strong>Is Paused:</strong> {isPaused ? 'Yes' : 'No'}</div>
-            <div><strong>Numbers Called:</strong> {calledNumbers.length}/90</div>
-            <div><strong>Current Number:</strong> {currentNumber || 'None'}</div>
-            <div><strong>All Prizes Won:</strong> {allPrizesWon ? 'Yes' : 'No'}</div>
-            <div><strong>Game Complete:</strong> {isGameComplete ? 'Yes' : 'No'}</div>
-            <div><strong>Processing:</strong> {isProcessing ? 'Yes' : 'No'}</div>
-            <div><strong>Active Tickets:</strong> {Object.keys(currentGame.activeTickets?.bookings || {}).length}</div>
-          </div>
-        </div>
-      )}
-
       <PlayingPhaseView
         currentGame={currentGame}
         winners={winners}
@@ -212,7 +196,7 @@ const PlayingPhase: React.FC = () => {
         error={error}
         isGameComplete={isGameComplete}
         isProcessing={isProcessing}
-        queueNumbers={[]} // No queue in optimized version
+        queueNumbers={[]}
         allPrizesWon={allPrizesWon}
         onSoundToggle={handleSoundToggle}
         onDelayChange={handleDelayChange}
