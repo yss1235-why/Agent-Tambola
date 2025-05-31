@@ -1,13 +1,15 @@
-// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - Updated
+// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - UPDATED to use Command Queue Pattern
+// Simplified game setup that uses commands instead of complex database operations
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { GameDatabaseService } from '../../../../services/GameDatabaseService';
+import { useGame } from '../../../../contexts/GameContext';
 import { LoadingSpinner, Toast } from '@components';
 import PrizeConfiguration from './components/PrizeConfiguration';
 import TicketSetSelector from './components/TicketSetSelector';
 import GameParameters from './components/GameParameters';
-import { Game, GAME_PHASES, GAME_STATUSES } from '../../../../types/game';
+import { Game } from '../../../../types/game';
 import { AlertTriangle, CheckCircle, Save, ChevronRight, Phone } from 'lucide-react';
 import { loadTicketData, validateTicketData } from '../../../../utils/ticketLoader';
 
@@ -18,16 +20,21 @@ interface GameSetupProps {
 const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  
+  // Get command methods from game context
+  const { 
+    updateGameSettings, 
+    startBookingPhase,
+    isProcessing 
+  } = useGame();
+  
   const [settings, setSettings] = useState<Game.Settings>(currentGame.settings);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info');
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
-
-  const databaseService = GameDatabaseService.getInstance();
 
   useEffect(() => {
     if (currentGame?.settings) {
@@ -52,7 +59,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
   };
 
   const validateSettings = (): boolean => {
-    setIsValidating(true);
     const errors: string[] = [];
     
     const hasPrizes = Object.values(settings.prizes).some(value => value === true);
@@ -88,11 +94,12 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     }
     
     setValidationErrors(errors);
-    setIsValidating(false);
-    
     return errors.length === 0;
   };
 
+  /**
+   * Save settings using command
+   */
   const saveSettings = async () => {
     if (!currentUser?.uid) return;
     
@@ -106,16 +113,19 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     setIsSubmitting(true);
     
     try {
-      await databaseService.updateGameSettings(currentUser.uid, settings);
-      await databaseService.saveDefaultSettings(currentUser.uid, settings);
+      console.log('💾 Saving settings with command');
       
-      setToastMessage('Settings saved successfully and set as defaults');
+      // Send command to update game settings
+      const commandId = updateGameSettings(settings);
+      console.log(`📤 Update settings command sent: ${commandId}`);
+      
+      setToastMessage('Settings saved successfully');
       setToastType('success');
       setShowToast(true);
       setHasMadeChanges(false);
       
     } catch (error) {
-      console.error('Error saving settings:', error);
+      console.error('❌ Error saving settings:', error);
       setToastMessage('Failed to save settings. Please try again.');
       setToastType('error');
       setShowToast(true);
@@ -124,7 +134,10 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     }
   };
 
-  const startBookingPhase = async () => {
+  /**
+   * Start booking phase using command
+   */
+  const handleStartBookingPhase = async () => {
     if (!currentUser?.uid) return;
     
     if (!validateSettings()) {
@@ -137,10 +150,10 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     setIsSubmitting(true);
     
     try {
-      console.log('Starting booking phase. Loading ticket data...');
+      console.log('🎫 Starting booking phase with command');
       
-      await databaseService.saveDefaultSettings(currentUser.uid, settings);
-      
+      // Load ticket data
+      console.log('Loading ticket data...');
       const ticketData = await loadTicketData(
         settings.selectedTicketSet,
         settings.maxTickets
@@ -152,6 +165,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       
       console.log(`Ticket data loaded successfully. Creating ${settings.maxTickets} tickets...`);
       
+      // Create tickets object
       const tickets: Record<string, Game.Ticket> = {};
       for (let i = 1; i <= settings.maxTickets; i++) {
         const ticketId = i.toString();
@@ -166,56 +180,18 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         };
       }
       
-      const gameStateUpdates: Partial<Game.GameState> = {
-        phase: GAME_PHASES.BOOKING,
-        status: GAME_STATUSES.BOOKING,
-        winners: {
-          quickFive: [],
-          topLine: [],
-          middleLine: [],
-          bottomLine: [],
-          corners: [],
-          starCorners: [],
-          halfSheet: [],
-          fullSheet: [],
-          fullHouse: [],
-          secondFullHouse: []
-        }
-      };
-
-      const numberSystemUpdates: Partial<Game.NumberSystem> = {
-        callDelay: settings.callDelay || 5,
-        currentNumber: null,
-        calledNumbers: [],
-        queue: []
-      };
-
-      const metricsData: Game.BookingMetrics = {
-        startTime: Date.now(),  // Now this property exists in the interface
-        lastBookingTime: Date.now(),
-        totalBookings: 0,
-        totalPlayers: 0
-      };
-
-      console.log('Updating database with ticket data...');
-      
-      await databaseService.batchUpdateGameData(currentUser.uid, {
-        gameState: gameStateUpdates,
-        numberSystem: numberSystemUpdates,
-        tickets,
-        metrics: metricsData
-      });
-      
-      console.log('Database updated successfully. Moving to booking phase.');
+      // Send command to start booking phase
+      const commandId = startBookingPhase(settings, tickets);
+      console.log(`📤 Start booking phase command sent: ${commandId}`);
       
       setToastMessage('Moving to booking phase');
       setToastType('success');
       setShowToast(true);
       
-      navigate('/dashboard');
+      // Navigation will happen automatically when game state updates
       
     } catch (error) {
-      console.error('Error starting booking phase:', error);
+      console.error('❌ Error starting booking phase:', error);
       setToastMessage(`Failed to start booking phase: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setToastType('error');
       setShowToast(true);
@@ -239,17 +215,23 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                 Unsaved changes
               </span>
             )}
+            {isProcessing && (
+              <span className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded flex items-center">
+                <div className="animate-spin h-3 w-3 border border-blue-600 border-t-transparent rounded-full mr-1" />
+                Processing...
+              </span>
+            )}
             <button
               onClick={saveSettings}
-              disabled={isSubmitting || !hasMadeChanges}
+              disabled={isSubmitting || !hasMadeChanges || isProcessing}
               className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center
-                ${isSubmitting || !hasMadeChanges
+                ${isSubmitting || !hasMadeChanges || isProcessing
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                 }`}
             >
               <Save className="w-4 h-4 mr-1" />
-              Save Settings
+              {isSubmitting ? 'Saving...' : 'Save Settings'}
             </button>
           </div>
         </div>
@@ -338,16 +320,25 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         
         <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200 flex flex-col sm:flex-row sm:justify-end">
           <button
-            onClick={startBookingPhase}
-            disabled={isSubmitting || validationErrors.length > 0}
+            onClick={handleStartBookingPhase}
+            disabled={isSubmitting || validationErrors.length > 0 || isProcessing}
             className={`w-full sm:w-auto px-4 sm:px-6 py-4 sm:py-3 rounded-lg text-white font-medium flex items-center justify-center
-              ${isSubmitting || validationErrors.length > 0
+              ${isSubmitting || validationErrors.length > 0 || isProcessing
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700'
               }`}
           >
-            Continue to Booking Phase
-            <ChevronRight className="w-5 h-5 ml-2" />
+            {isSubmitting || isProcessing ? (
+              <span className="flex items-center">
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                {isSubmitting ? 'Setting up...' : 'Processing...'}
+              </span>
+            ) : (
+              <>
+                Continue to Booking Phase
+                <ChevronRight className="w-5 h-5 ml-2" />
+              </>
+            )}
           </button>
         </div>
       </div>
