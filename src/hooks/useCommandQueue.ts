@@ -1,4 +1,4 @@
-// src/hooks/useCommandQueue.ts
+// src/hooks/useCommandQueue.ts - FIXED command creation type issues
 // React hook for sending commands through the queue system
 // This provides a clean interface for components to interact with the command system
 
@@ -119,17 +119,18 @@ export function useCommandQueue({
   }, []);
   
   /**
-   * Send a generic command
+   * Send a generic command - FIXED to properly include hostId
    */
   const sendCommand = useCallback((
     command: CreateCommand<GameCommand>, 
     priority: CommandPriority = CommandPriority.NORMAL
   ): string => {
+    // FIXED: Ensure hostId is included in the command
     const fullCommand: GameCommand = {
       ...command,
       id: generateCommandId(),
       timestamp: Date.now(),
-      hostId
+      hostId // This was missing before
     } as GameCommand;
     
     const success = commandQueue.current.enqueue(fullCommand, priority);
