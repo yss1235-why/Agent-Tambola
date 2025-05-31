@@ -1,19 +1,55 @@
-// src/contexts/GameContext.tsx - Fixed to include currentGame
-import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
-import { useGameController } from '../hooks/useGameController';
+// src/contexts/GameContext.tsx - UPDATED to use Command Queue Pattern
+// This replaces the complex game controller with a simple command-based system
+
+import React, { createContext, useContext, useState, useMemo, ReactNode, useEffect } from 'react';
+import { useCommandQueue } from '../hooks/useCommandQueue';
+import { useGameDatabase } from '../hooks/useGameDatabase';
 import { formatMultiplePrizes } from '../utils/prizeValidation';
-import type { PrizeWinResult } from '../types/hooks'; // Import from types
+import type { CommandResult, CommandError } from '../types/commands';
 import type { Game } from '../types/game';
 
-type GameContextType = ReturnType<typeof useGameController> & {
+// Simplified context type - commands replace complex methods
+type GameContextType = {
+  // Game state (read-only)
+  currentGame: Game.CurrentGame | null;
+  isLoading: boolean;
+  error: string | null;
+  
+  // Command queue state
+  isProcessing: boolean;
+  queueLength: number;
+  
+  // Simple command methods (replace complex game controller)
+  callNumber: (number: number) => string;
+  updateGameStatus: (status: 'active' | 'paused' | 'ended', isAutoCalling?: boolean) => string;
+  createBooking: (playerName: string, phoneNumber: string, tickets: string[]) => string;
+  updateBooking: (ticketId: string, playerName?: string, phoneNumber?: string) => string;
+  updateGameSettings: (settings: Partial<Game.Settings>) => string;
+  initializeGame: (settings: Game.Settings, tickets?: Record<string, Game.Ticket>) => string;
+  startBookingPhase: (settings: Game.Settings, tickets: Record<string, Game.Ticket>) => string;
+  startPlayingPhase: () => string;
+  completeGame: (reason?: string) => string;
+  updateCallDelay: (callDelay: number) => string;
+  updateSoundSettings: (soundEnabled: boolean) => string;
+  cancelBooking: (ticketIds: string[]) => string;
+  
+  // Utilities
   hostId: string | null;
-  announceWinner: (winner: PrizeWinResult) => void;
+  clearError: () => void;
+  
+  // Notifications for UI
   toastNotifications: Array<{
     id: string;
     message: string;
     type: 'success' | 'error' | 'info';
   }>;
-  currentGame: Game.CurrentGame | null; // ADD: Expose currentGame from controller
+  announceWinner: (winner: { 
+    playerName: string; 
+    prizeTypes: string[]; 
+    ticketId: string;
+    playerId: string;
+    phoneNumber: string;
+  }) => void;
 };
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -24,75 +60,134 @@ interface GameProviderProps {
 }
 
 export function GameProvider({ children, hostId }: GameProviderProps) {
+  // Local state for UI
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [toastNotifications, setToastNotifications] = useState<Array<{
     id: string;
     message: string;
     type: 'success' | 'error' | 'info';
   }>>([]);
 
-  const announceWinner = (winner: PrizeWinResult) => {
+  // Use database hook for reading game state only
+  const { gameState: currentGame, subscribeToGame } = useGameDatabase({
+    hostId: hostId || '',
+    onError: (err) => setError(err)
+  });
+
+  // Use command queue for all actions
+  const commandQueue = useCommandQueue({
+    hostId: hostId || '',
+    onResult: (result: CommandResult) => {
+      console.log(`✅ Command completed: ${result.command.type}`, result);
+      
+      // Handle specific command results for UI feedback
+      if (result.success) {
+        switch (result.command.type) {
+          case 'CALL_NUMBER':
+            addToast(`Number ${result.data?.number} called`, 'info');
+            break;
+          case 'CREATE_BOOKING':
+            addToast(`Booking created for ${result.data?.playerName}`, 'success');
+            break;
+          case 'UPDATE_PRIZE_WINNERS':
+            const prizeText = formatMultiplePrizes(result.data?.allPrizeTypes || [result.data?.prizeType]);
+            addToast(`🎉 ${result.data?.playerName} won ${prizeText}!`, 'success');
+            break;
+          case 'COMPLETE_GAME':
+            addToast('🎉 Game completed successfully!', 'success');
+            break;
+        }
+      }
+    },
+    onError: (error: CommandError) => {
+      console.error(`❌ Command failed: ${error.command.type}`, error);
+      addToast(`Error: ${error.message}`, 'error');
+    }
+  });
+
+  // Subscribe to game state changes
+  useEffect(() => {
+    if (!hostId) return;
+
+    setIsLoading(true);
+    
+    const unsubscribe = subscribeToGame((game) => {
+      setIsLoading(false);
+      // Game state is automatically updated via useGameDatabase
+    });
+
+    return unsubscribe;
+  }, [hostId, subscribeToGame]);
+
+  // Toast notification helpers
+  const addToast = (message: string, type: 'success' | 'error' | 'info') => {
+    const id = Date.now().toString();
+    setToastNotifications(prev => [...prev, { id, message, type }]);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      setToastNotifications(prev => prev.filter(n => n.id !== id));
+    }, 5000);
+  };
+
+  const announceWinner = (winner: { 
+    playerName: string; 
+    prizeTypes: string[]; 
+    ticketId: string;
+    playerId: string;
+    phoneNumber: string;
+  }) => {
     const prizeText = formatMultiplePrizes(winner.prizeTypes);
     const message = `🎉 ${winner.playerName} won ${prizeText} with ticket ${winner.ticketId}!`;
     
     console.log(message);
-    
-    // Add toast notification
-    const notificationId = Date.now().toString();
-    setToastNotifications(prev => [...prev, {
-      id: notificationId,
-      message,
-      type: 'success'
-    }]);
-
-    // Remove notification after 5 seconds
-    setTimeout(() => {
-      setToastNotifications(prev => prev.filter(n => n.id !== notificationId));
-    }, 5000);
+    addToast(message, 'success');
   };
 
-  const gameController = useGameController({
-    hostId: hostId || '',
-    onNumberCalled: (number: number) => {
-      console.log(`📢 Number called: ${number}`);
-    },
-    onPrizeWon: (winner: PrizeWinResult) => {
-      announceWinner(winner);
-      console.log(`🏆 Prize won by ${winner.playerName}:`, winner.prizeTypes);
-    },
-    onGameComplete: () => {
-      console.log('🎉 Game completed successfully');
-      announceWinner({
-        playerId: 'system',
-        playerName: 'Game',
-        ticketId: '',
-        prizeTypes: ['Game Complete'],
-        phoneNumber: ''
-      });
-    },
-    onError: (error: string) => {
-      console.error('🚨 Game error:', error);
-      
-      // Add error notification
-      const notificationId = Date.now().toString();
-      setToastNotifications(prev => [...prev, {
-        id: notificationId,
-        message: `Error: ${error}`,
-        type: 'error'
-      }]);
+  const clearError = () => {
+    setError(null);
+  };
 
-      setTimeout(() => {
-        setToastNotifications(prev => prev.filter(n => n.id !== notificationId));
-      }, 8000);
-    }
-  });
-  
+  // Context value with simplified interface
   const contextValue = useMemo(() => ({
-    ...gameController,
+    // Game state (read-only)
+    currentGame,
+    isLoading,
+    error,
+    
+    // Command queue state
+    isProcessing: commandQueue.isProcessing,
+    queueLength: commandQueue.queueLength,
+    
+    // Simple command methods
+    callNumber: commandQueue.callNumber,
+    updateGameStatus: commandQueue.updateGameStatus,
+    createBooking: commandQueue.createBooking,
+    updateBooking: commandQueue.updateBooking,
+    updateGameSettings: commandQueue.updateGameSettings,
+    initializeGame: commandQueue.initializeGame,
+    startBookingPhase: commandQueue.startBookingPhase,
+    startPlayingPhase: commandQueue.startPlayingPhase,
+    completeGame: commandQueue.completeGame,
+    updateCallDelay: commandQueue.updateCallDelay,
+    updateSoundSettings: commandQueue.updateSoundSettings,
+    cancelBooking: commandQueue.cancelBooking,
+    
+    // Utilities
     hostId,
-    announceWinner,
+    clearError,
     toastNotifications,
-    currentGame: gameController.gameState // ADD: Expose currentGame from gameState
-  }), [gameController, hostId, toastNotifications]);
+    announceWinner
+  }), [
+    currentGame, isLoading, error,
+    commandQueue.isProcessing, commandQueue.queueLength,
+    commandQueue.callNumber, commandQueue.updateGameStatus, commandQueue.createBooking,
+    commandQueue.updateBooking, commandQueue.updateGameSettings, commandQueue.initializeGame,
+    commandQueue.startBookingPhase, commandQueue.startPlayingPhase, commandQueue.completeGame,
+    commandQueue.updateCallDelay, commandQueue.updateSoundSettings, commandQueue.cancelBooking,
+    hostId, toastNotifications
+  ]);
   
   return (
     <GameContext.Provider value={contextValue}>
