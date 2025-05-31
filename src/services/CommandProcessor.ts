@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - FIXED type casting and phase number issues
+// src/services/CommandProcessor.ts - FIXED type casting and indexing issues
 // Command processor that executes all commands and handles Firebase writes
 // This is the ONLY place where Firebase writes should happen
 
@@ -300,7 +300,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute update game status command - FIXED type casting
+   * Execute update game status command
    */
   private async executeUpdateGameStatus(command: any, context: CommandContext): Promise<CommandResult> {
     const { status, isAutoCalling } = command.payload;
@@ -474,7 +474,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute initialize game command - FIXED phase numbers
+   * Execute initialize game command
    */
   private async executeInitializeGame(command: any, context: CommandContext): Promise<CommandResult> {
     const { settings, tickets } = command.payload;
@@ -483,7 +483,7 @@ export class CommandProcessor {
     const newGame: Game.CurrentGame = {
       settings,
       gameState: {
-        phase: 1 as const, // FIXED: Explicit type assertion for setup phase
+        phase: 1 as const,
         status: 'setup',
         isAutoCalling: false,
         soundEnabled: true,
@@ -512,14 +512,14 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute start booking phase command - FIXED phase numbers
+   * Execute start booking phase command
    */
   private async executeStartBookingPhase(command: any, context: CommandContext): Promise<CommandResult> {
     const { settings, tickets } = command.payload;
     const { hostId } = context;
     
     const gameStateUpdates = {
-      phase: 2 as const, // FIXED: Explicit type assertion for booking phase
+      phase: 2 as const,
       status: 'booking' as const
     };
     
@@ -551,7 +551,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute start playing phase command - FIXED phase numbers
+   * Execute start playing phase command
    */
   private async executeStartPlayingPhase(command: any, context: CommandContext): Promise<CommandResult> {
     const { hostId, currentGame } = context;
@@ -561,7 +561,7 @@ export class CommandProcessor {
     }
     
     const gameStateUpdates = {
-      phase: 3 as const, // FIXED: Explicit type assertion for playing phase
+      phase: 3 as const,
       status: 'paused' as const,
       isAutoCalling: false,
       soundEnabled: true,
@@ -589,7 +589,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute complete game command - FIXED phase numbers
+   * Execute complete game command
    */
   private async executeCompleteGame(command: any, context: CommandContext): Promise<CommandResult> {
     const { reason } = command.payload;
@@ -601,7 +601,7 @@ export class CommandProcessor {
     
     // Update game state to completed
     await this.databaseService.updateGameState(hostId, {
-      phase: 4 as const, // FIXED: Explicit type assertion for completed phase
+      phase: 4 as const,
       status: 'ended',
       isAutoCalling: false
     });
@@ -708,7 +708,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Check for prizes after a number is called
+   * Check for prizes after a number is called - FIXED type safety issue
    */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
     try {
@@ -737,8 +737,10 @@ export class CommandProcessor {
         
         for (const result of validationResults) {
           if (result.isWinner && result.winningTickets.length > 0) {
-            winnersUpdate[result.prizeType] = [
-              ...(context.currentWinners[result.prizeType] || []),
+            // FIXED: Use proper type assertion to ensure type safety
+            const prizeKey = result.prizeType as keyof Game.Winners;
+            winnersUpdate[prizeKey] = [
+              ...(context.currentWinners[prizeKey] || []),
               ...result.winningTickets
             ];
             hasNewWinners = true;
@@ -760,7 +762,9 @@ export class CommandProcessor {
           const allActivePrizesWon = Object.entries(context.activePrizes)
             .filter(([_, isActive]) => isActive)
             .every(([prizeType]) => {
-              const winners = updatedWinners[prizeType as keyof Game.Winners];
+              // FIXED: Use proper type assertion for safe indexing
+              const prizeKey = prizeType as keyof Game.Winners;
+              const winners = updatedWinners[prizeKey];
               return winners && winners.length > 0;
             });
           
@@ -770,7 +774,7 @@ export class CommandProcessor {
               allPrizesWon: true,
               isAutoCalling: false,
               status: 'ended',
-              phase: 4 as const // FIXED: Explicit type assertion
+              phase: 4 as const
             });
           }
         }
