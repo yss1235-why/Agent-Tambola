@@ -323,12 +323,12 @@ function PlayingPhaseView({
         </div>
       )}
 
-      {/* Game Controls */}
+      {/* Game Controls - FIXED interface */}
       <GameControls
         gameStatus={gameStatus}
         soundEnabled={soundEnabled}
         delaySeconds={callDelay}
-        onStatusChange={onStatusChange}
+        onStatusChange={onStatusChange} // This prop now exists in interface
         onSoundToggle={onSoundToggle}
         onDelayChange={onDelayChange}
         onGameEnd={onGameEnd}
