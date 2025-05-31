@@ -1,4 +1,5 @@
-// src/components/GameControls.tsx - Fixed with better status handling
+// ===== COMPLETE FILE 4: src/components/GameControls.tsx =====
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Play, Pause, StopCircle, Volume2, VolumeX } from 'lucide-react';
 import appConfig from '../config/appConfig';
@@ -36,11 +37,9 @@ function GameControls({
 
   // Handle delay input and save it
   const handleDelaySubmit = useCallback(() => {
-    // Convert tempDelay to number and validate
     const delayValue = typeof tempDelay === 'string' ? 
       (tempDelay === '' ? 3 : parseInt(tempDelay)) : tempDelay;
     
-    // Ensure the value is between 3 and 20
     const validDelay = Math.max(3, Math.min(20, delayValue));
     console.log(`⏱️ Submitting delay change to ${validDelay} seconds`);
     onDelayChange(validDelay);
@@ -49,10 +48,9 @@ function GameControls({
 
   // Handle the confirmation and actually end the game
   const handleEndGame = useCallback(() => {
-    // Call the passed down onGameEnd function to handle the game-ending logic
     console.log('🏁 Confirming game end');
     onGameEnd();
-    setShowEndGameConfirm(false); // Close the confirmation dialog after confirming
+    setShowEndGameConfirm(false);
   }, [onGameEnd]);
 
   // Handler for status change with loading state
@@ -65,7 +63,6 @@ function GameControls({
     try {
       await onStatusChange(newStatus);
       
-      // Add a small delay to show the loading state
       setTimeout(() => {
         setIsChangingStatus(false);
       }, 500);
@@ -260,11 +257,6 @@ function GameControls({
         <p className="mt-1">
           Press the {gameStatus === 'active' ? 'Pause' : 'Start'} button to {gameStatus === 'active' ? 'pause' : 'start'} the game.
         </p>
-        {process.env.NODE_ENV === 'development' && (
-          <p className="mt-2 text-xs text-blue-600">
-            Debug: Status = {gameStatus}, Disabled = {disableControls ? 'Yes' : 'No'}, Changing = {isChangingStatus ? 'Yes' : 'No'}
-          </p>
-        )}
       </div>
     </div>
   );
