@@ -1,6 +1,8 @@
-// src/components/Dashboard/Dashboard.tsx - Updated
+// src/components/Dashboard/Dashboard.tsx - Updated with debug component
+
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useGame } from '../../contexts/GameContext'; // Add this import
 import { GameDatabaseService } from '../../services/GameDatabaseService';
 import DashboardHeader from './DashboardHeader';
 import GameSetup from './GamePhases/GameSetup/GameSetup';
@@ -9,7 +11,171 @@ import PlayingPhase from './GamePhases/PlayingPhase/PlayingPhase';
 import { LoadingSpinner } from '@components';
 import { Game, GAME_PHASES, GAME_STATUSES } from '../../types/game';
 import SubscriptionExpiredPrompt from './SubscriptionExpiredPrompt';
+import appConfig from '../../config/appConfig'; // Add this import
 
+// ADD THIS DEBUG COMPONENT DIRECTLY IN YOUR DASHBOARD FILE
+const DeepDebugAnalysis = () => {
+  const { currentUser } = useAuth();
+  const gameContext = useGame();
+  const [debugInfo, setDebugInfo] = useState<any>({});
+
+  useEffect(() => {
+    // Comprehensive analysis
+    const analysis = {
+      timestamp: new Date().toISOString(),
+      
+      // 1. App Configuration
+      appConfig: {
+        hostUID: appConfig.hostUID,
+        hostUID_type: typeof appConfig.hostUID,
+        hostUID_length: appConfig.hostUID?.length,
+        hostUID_truthy: !!appConfig.hostUID,
+        entire_appConfig: appConfig
+      },
+      
+      // 2. Current User
+      currentUser: {
+        uid: currentUser?.uid,
+        email: currentUser?.email,
+        exists: !!currentUser
+      },
+      
+      // 3. Game Context
+      gameContext: {
+        hostId: gameContext.hostId,
+        gameState_exists: !!gameContext.gameState,
+        gameState_phase: gameContext.gameState?.gameState?.phase,
+        gameState_status: gameContext.gameState?.gameState?.status,
+        full_gameContext: gameContext
+      },
+      
+      // 4. Browser Environment
+      browser: {
+        userAgent: navigator.userAgent,
+        localStorage_keys: Object.keys(localStorage),
+        sessionStorage_keys: Object.keys(sessionStorage),
+        url: window.location.href,
+        origin: window.location.origin
+      },
+      
+      // 5. Check for old UID in various places
+      oldUID_search: {
+        in_localStorage: checkLocalStorageForOldUID(),
+        in_sessionStorage: checkSessionStorageForOldUID(),
+        in_appConfig: JSON.stringify(appConfig).includes('B8kbztcNrrXbvWYtlv3slaXJSyR2'),
+        in_gameContext: JSON.stringify(gameContext).includes('B8kbztcNrrXbvWYtlv3slaXJSyR2')
+      }
+    };
+    
+    setDebugInfo(analysis);
+    
+    // Log everything to console
+    console.log('🕵️ DEEP DEBUG ANALYSIS:', analysis);
+    
+    // Special check: look for the exact error path
+    if (analysis.oldUID_search.in_gameContext) {
+      console.log('🚨 FOUND OLD UID IN GAME CONTEXT!');
+      console.log('Game Context:', gameContext);
+    }
+    
+  }, [currentUser, gameContext]);
+
+  // Helper functions
+  function checkLocalStorageForOldUID() {
+    const findings: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      const value = localStorage.getItem(key || '');
+      if (value?.includes('B8kbztcNrrXbvWYtlv3slaXJSyR2')) {
+        findings.push(`${key}: ${value}`);
+      }
+    }
+    return findings;
+  }
+
+  function checkSessionStorageForOldUID() {
+    const findings: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      const value = sessionStorage.getItem(key || '');
+      if (value?.includes('B8kbztcNrrXbvWYtlv3slaXJSyR2')) {
+        findings.push(`${key}: ${value}`);
+      }
+    }
+    return findings;
+  }
+
+  return (
+    <div className="bg-red-50 border-4 border-red-500 rounded-lg p-6 mb-4 max-w-full overflow-auto">
+      <h2 className="text-2xl font-bold text-red-800 mb-4">🕵️ DEEP DEBUG ANALYSIS</h2>
+      
+      {/* Quick Status */}
+      <div className="bg-white p-4 rounded border-2 border-red-300 mb-4">
+        <h3 className="font-bold text-lg text-red-700 mb-2">🎯 SMOKING GUN CHECK</h3>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span>App Config Host UID:</span>
+            <span className="font-mono font-bold text-blue-600">{debugInfo.appConfig?.hostUID}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Game Context Host ID:</span>
+            <span className="font-mono font-bold text-purple-600">{debugInfo.gameContext?.hostId}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Current User UID:</span>
+            <span className="font-mono font-bold text-green-600">{debugInfo.currentUser?.uid}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Old UID in Game Context:</span>
+            <span className="font-bold text-red-600">
+              {debugInfo.oldUID_search?.in_gameContext ? '🚨 YES - FOUND THE PROBLEM!' : '✅ No'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="mt-6 flex flex-wrap gap-3">
+        <button 
+          onClick={() => {
+            console.log('🧹 CLEARING ALL BROWSER DATA');
+            localStorage.clear();
+            sessionStorage.clear();
+            alert('All browser storage cleared! Please refresh the page.');
+          }}
+          className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+        >
+          🧹 Clear All Storage
+        </button>
+        
+        <button 
+          onClick={() => {
+            console.log('🔍 FULL DEBUG DUMP:');
+            console.log(debugInfo);
+            console.log('appConfig object:', appConfig);
+            console.log('gameContext object:', gameContext);
+            console.log('currentUser object:', currentUser);
+          }}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          🔍 Full Console Log
+        </button>
+        
+        <button 
+          onClick={() => {
+            // Force hard refresh
+            window.location.reload();
+          }}
+          className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+        >
+          🔄 Hard Refresh
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// YOUR EXISTING DASHBOARD COMPONENT (add the debug at the top of the return)
 const DEFAULT_PRIZES: Game.Settings['prizes'] = {
   quickFive: true,
   topLine: true,
@@ -213,6 +379,9 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen">
+      {/* ADD THE DEBUG COMPONENT HERE - FIRST THING IN THE RETURN */}
+      <DeepDebugAnalysis />
+      
       <DashboardHeader 
         username={userProfile?.username || 'Host'}
         subscriptionEnd={userProfile?.subscriptionEnd || 0}
