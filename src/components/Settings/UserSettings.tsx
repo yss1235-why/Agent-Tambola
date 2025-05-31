@@ -1,4 +1,4 @@
-// src/components/Settings/UserSettings.tsx - Updated
+// src/components/Settings/UserSettings.tsx - FIXED TypeScript compilation errors
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AudioManager } from '../../utils/audioManager';
@@ -25,8 +25,10 @@ interface UserPreferences {
   };
 }
 
-// Simple Firebase utility replacement
-const readData = async <T>(hostId: string, path: string): Promise<{ success: boolean; data?: T; error?: string }> => {
+// FIXED: Simple Firebase utilities with proper generic syntax
+type ReadDataResult<T> = { success: boolean; data?: T; error?: string };
+
+const readData = async function<T>(hostId: string, path: string): Promise<ReadDataResult<T>> {
   try {
     const dataRef = ref(database, `hosts/${hostId}/${path}`);
     const snapshot = await get(dataRef);
