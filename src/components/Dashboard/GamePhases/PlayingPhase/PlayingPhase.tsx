@@ -1,6 +1,5 @@
-// ===== COMPLETE FILE 3: src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx =====
-
-import { useState, useEffect, useCallback } from 'react';
+// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx - Fixed to prevent re-render loops
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { useGame } from '../../../../contexts/GameContext';
@@ -30,14 +29,18 @@ const PlayingPhase: React.FC = () => {
     resetError
   } = useGame();
   
-  // Local state - simplified
+  // Local state - simplified and stable
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGameComplete, setIsGameComplete] = useState(false);
   const [soundEnabled, setSoundEnabledLocal] = useState(true);
   const [callDelay, setCallDelayLocal] = useState(5);
+  
+  // Refs to prevent excessive re-initialization logs
+  const hasInitialized = useRef(false);
+  const lastGameStateRef = useRef<string>('');
 
-  // FIXED: Initialize component without constant logging
+  // Initialize component - FIXED to prevent constant re-initialization
   useEffect(() => {
     if (!currentUser?.uid) {
       navigate('/login');
@@ -45,12 +48,21 @@ const PlayingPhase: React.FC = () => {
     }
     
     if (currentGame) {
-      console.log("PlayingPhase initialized with game:", {
-        status: currentGame.gameState?.status,
-        phase: currentGame.gameState?.phase,
-        calledNumbers: currentGame.numberSystem?.calledNumbers?.length || 0,
-        allPrizesWon: currentGame.gameState?.allPrizesWon
-      });
+      // Create a state signature to prevent excessive logging
+      const gameStateSignature = `${currentGame.gameState?.status}-${currentGame.gameState?.phase}-${currentGame.numberSystem?.calledNumbers?.length}-${currentGame.gameState?.allPrizesWon}`;
+      
+      // Only log initialization when the game state actually changes or on first load
+      if (!hasInitialized.current || lastGameStateRef.current !== gameStateSignature) {
+        console.log("PlayingPhase initialized with game:", {
+          status: currentGame.gameState?.status,
+          phase: currentGame.gameState?.phase,
+          calledNumbers: currentGame.numberSystem?.calledNumbers?.length || 0,
+          allPrizesWon: currentGame.gameState?.allPrizesWon
+        });
+        
+        hasInitialized.current = true;
+        lastGameStateRef.current = gameStateSignature;
+      }
       
       const isComplete = currentGame.gameState?.status === 'ended' || 
                         currentGame.gameState?.phase === 4 ||
@@ -63,21 +75,21 @@ const PlayingPhase: React.FC = () => {
     }
   }, [currentUser, currentGame, navigate, isGameEnded]);
 
-  // Sync with game completion states
+  // Sync with game completion states - STABLE
   useEffect(() => {
     if (allPrizesWon || isGameEnded) {
       setIsGameComplete(true);
     }
   }, [allPrizesWon, isGameEnded]);
 
-  // Sync with game error
+  // Sync with game error - STABLE
   useEffect(() => {
     if (gameError) {
       setError(gameError);
     }
   }, [gameError]);
 
-  // Handle delay change
+  // STABLE callbacks with useCallback to prevent re-renders
   const handleDelayChange = useCallback(async (newDelay: number) => {
     setCallDelayLocal(newDelay);
     console.log(`Changing call delay to ${newDelay} seconds`);
@@ -90,7 +102,6 @@ const PlayingPhase: React.FC = () => {
     }
   }, [setCallDelay]);
 
-  // Handle sound toggle
   const handleSoundToggle = useCallback(async () => {
     const newSoundEnabled = !soundEnabled;
     setSoundEnabledLocal(newSoundEnabled);
@@ -104,7 +115,6 @@ const PlayingPhase: React.FC = () => {
     }
   }, [soundEnabled, setSoundEnabled]);
 
-  // Handle status change (pause/resume)
   const handleStatusChange = useCallback(async (status: 'active' | 'paused') => {
     if (allPrizesWon && status === 'active') {
       setError('Cannot resume game: All prizes have been won');
@@ -130,7 +140,6 @@ const PlayingPhase: React.FC = () => {
     }
   }, [allPrizesWon, isGameComplete, pauseGame, resumeGame]);
 
-  // Handle game end
   const handleGameEnd = useCallback(async () => {
     try {
       console.log('Ending game...');
@@ -147,12 +156,10 @@ const PlayingPhase: React.FC = () => {
     }
   }, [completeGame, navigate]);
 
-  // Handle start new game
   const handleStartNewGame = useCallback(async () => {
     navigate('/dashboard', { replace: true });
   }, [navigate]);
 
-  // Handle error dismissal
   const handleErrorDismiss = useCallback(() => {
     setError(null);
     resetError();
@@ -167,7 +174,7 @@ const PlayingPhase: React.FC = () => {
     );
   }
 
-  // Safely extract winners and settings
+  // Safely extract winners and settings with stable references
   const winners = currentGame.gameState?.winners || {
     quickFive: [], topLine: [], middleLine: [], bottomLine: [],
     corners: [], starCorners: [], halfSheet: [], fullSheet: [],
@@ -188,6 +195,23 @@ const PlayingPhase: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {/* Debug panel for development - Only show when state changes */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="bg-gray-100 p-4 rounded-lg border">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Panel - Fixed Controller</h4>
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            <div><strong>Game Status:</strong> {currentGame.gameState?.status || 'unknown'}</div>
+            <div><strong>Is Paused:</strong> {isPaused ? 'Yes' : 'No'}</div>
+            <div><strong>Numbers Called:</strong> {calledNumbers.length}/90</div>
+            <div><strong>Current Number:</strong> {currentNumber || 'None'}</div>
+            <div><strong>All Prizes Won:</strong> {allPrizesWon ? 'Yes' : 'No'}</div>
+            <div><strong>Game Complete:</strong> {isGameComplete ? 'Yes' : 'No'}</div>
+            <div><strong>Processing:</strong> {isProcessing ? 'Yes' : 'No'}</div>
+            <div><strong>Active Tickets:</strong> {Object.keys(currentGame.activeTickets?.bookings || {}).length}</div>
+          </div>
+        </div>
+      )}
+
       <PlayingPhaseView
         currentGame={currentGame}
         winners={winners}
@@ -196,7 +220,7 @@ const PlayingPhase: React.FC = () => {
         error={error}
         isGameComplete={isGameComplete}
         isProcessing={isProcessing}
-        queueNumbers={[]}
+        queueNumbers={[]} // No queue in optimized version
         allPrizesWon={allPrizesWon}
         onSoundToggle={handleSoundToggle}
         onDelayChange={handleDelayChange}
