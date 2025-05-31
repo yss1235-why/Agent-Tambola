@@ -1,13 +1,13 @@
-// src/hooks/usePrizeValidation.ts - Simplified version
+// src/hooks/usePrizeValidation.ts - Updated for optimized validation
 import { useState, useCallback } from 'react';
-import { validateAllPrizes, ValidationContext } from '../utils/prizeValidation';
+import { validateAllPrizes, ValidationContext } from '../utils/prizeValidation'; // Updated import
 import type { Game } from '../types/game';
 import type { PrizeValidationHookReturn } from '../types/hooks';
 
 interface UsePrizeValidationProps {
   hostId: string;
   gameState?: Game.CurrentGame | null;
-  onPrizeWon?: (prizeType: keyof Game.Winners, ticketIds: string[]) => void;
+  onPrizeWon?: (prizeType: keyof Game.Winners, ticketIds: string[], playerName: string, prizeTypes: string[]) => void; // Updated callback
   onError?: (error: string) => void;
 }
 
@@ -59,12 +59,15 @@ export function usePrizeValidation({
         return;
       }
 
+      console.log('🔍 Running optimized prize validation...');
       const validationResults = validateAllPrizes(context);
 
       // Process validation results and trigger callbacks
       validationResults.forEach(result => {
         if (result.isWinner && result.winningTickets.length > 0) {
-          onPrizeWon?.(result.prizeType, result.winningTickets);
+          // Use the multiple prizes format
+          const prizeTypes = result.allPrizeTypes || [result.prizeType.replace(/([A-Z])/g, ' $1').trim()];
+          onPrizeWon?.(result.prizeType, result.winningTickets, result.playerName, prizeTypes);
         }
       });
 
