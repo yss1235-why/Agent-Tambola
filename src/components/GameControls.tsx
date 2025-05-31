@@ -9,6 +9,9 @@ interface GameControlsProps {
   gameStatus: 'active' | 'paused';
   soundEnabled: boolean;
   delaySeconds: number;
+  onStatusChange: (status: 'active' | 'paused') => void; // ADDED: Missing prop
+  onSoundToggle: () => void;
+  onDelayChange: (delay: number) => void;
   onGameEnd?: () => void; // Optional callback for UI navigation
   disableControls?: boolean;
 }
@@ -17,6 +20,9 @@ function GameControls({
   gameStatus,
   soundEnabled,
   delaySeconds,
+  onStatusChange, // ADDED: Now accepting this prop
+  onSoundToggle,
+  onDelayChange,
   onGameEnd,
   disableControls = false
 }: GameControlsProps) {
@@ -73,6 +79,9 @@ function GameControls({
       const commandId = updateGameStatus(newStatus, newStatus === 'active');
       console.log(`📤 Status command sent: ${commandId}`);
       
+      // Call the prop callback
+      onStatusChange(newStatus);
+      
       // Clear command tracking after a delay
       setTimeout(() => {
         setCommandInProgress(null);
@@ -85,7 +94,7 @@ function GameControls({
       setLocalGameStatus(gameStatus);
       setCommandInProgress(null);
     }
-  }, [localGameStatus, gameStatus, updateGameStatus, disableControls, isProcessing]);
+  }, [localGameStatus, gameStatus, updateGameStatus, onStatusChange, disableControls, isProcessing]);
 
   /**
    * Handle sound toggle with optimistic updates
@@ -104,6 +113,9 @@ function GameControls({
       const commandId = updateSoundSettings(newSoundEnabled);
       console.log(`📤 Sound command sent: ${commandId}`);
       
+      // Call the prop callback
+      onSoundToggle();
+      
       // Clear command tracking
       setTimeout(() => {
         setCommandInProgress(null);
@@ -116,7 +128,7 @@ function GameControls({
       setLocalSoundEnabled(soundEnabled);
       setCommandInProgress(null);
     }
-  }, [localSoundEnabled, soundEnabled, updateSoundSettings, disableControls]);
+  }, [localSoundEnabled, soundEnabled, updateSoundSettings, onSoundToggle, disableControls]);
 
   /**
    * Handle delay change
@@ -132,6 +144,9 @@ function GameControls({
       const commandId = updateCallDelay(validDelay);
       console.log(`📤 Delay command sent: ${commandId} (${validDelay}s)`);
       
+      // Call the prop callback
+      onDelayChange(validDelay);
+      
       setIsEditingDelay(false);
       setTempDelay(validDelay);
       
@@ -139,7 +154,7 @@ function GameControls({
       console.error('❌ Delay command failed:', error);
       setTempDelay(delaySeconds);
     }
-  }, [tempDelay, updateCallDelay, delaySeconds]);
+  }, [tempDelay, updateCallDelay, onDelayChange, delaySeconds]);
 
   /**
    * Handle end game
