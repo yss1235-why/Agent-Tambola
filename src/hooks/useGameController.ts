@@ -1,25 +1,18 @@
-// src/hooks/useGameController.ts - Updated for optimized validation
+// src/hooks/useGameController.ts - Fixed interface conflicts
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useGameDatabase } from './useGameDatabase';
 import { useNumberCalling } from './useNumberCalling';
 import { useGameState } from './useGameState';
 import { useGameAudio } from './useGameAudio';
 import { validateAllPrizes, ValidationContext, formatMultiplePrizes } from '../utils/prizeValidation';
-import type { GameHookCallbacks, GameControllerState } from '../types/hooks';
+import type { GameHookCallbacks, PrizeWinResult } from '../types/hooks'; // Import PrizeWinResult from types
 import type { Game } from '../types/game';
 
-// Updated interface for prize win results
-export interface PrizeWinResult {
-  playerId: string;
-  playerName: string;
-  phoneNumber: string;
-  ticketId: string;
-  prizeTypes: string[]; // Multiple prizes
-}
+// REMOVED: Don't redefine PrizeWinResult here since it's in types/hooks.ts
 
 interface UseGameControllerProps extends GameHookCallbacks {
   hostId: string;
-  onPrizeWon?: (result: PrizeWinResult) => void; // Updated callback
+  // onPrizeWon is now inherited from GameHookCallbacks with correct signature
 }
 
 export function useGameController({
@@ -408,5 +401,4 @@ export function useGameController({
   };
 }
 
-// **NEW: Export the PrizeWinResult type for use in other components**
-export type { PrizeWinResult };
+// **REMOVED: Export declaration to avoid conflict - PrizeWinResult is exported from types/hooks.ts**
