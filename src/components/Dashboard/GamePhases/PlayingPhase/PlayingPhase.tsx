@@ -1,4 +1,4 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx - Optimized version
+// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx - Fixed to use context properly
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -11,9 +11,9 @@ const PlayingPhase: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
-  // Use optimized game controller from context
+  // Use game controller from context - FIXED: access currentGame correctly
   const {
-    currentGame,
+    currentGame, // NOW: Available from context
     isProcessing,
     isPaused,
     currentNumber,
@@ -190,7 +190,7 @@ const PlayingPhase: React.FC = () => {
       {/* Debug panel for development */}
       {process.env.NODE_ENV === 'development' && (
         <div className="bg-gray-100 p-4 rounded-lg border">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Panel - Optimized Controller</h4>
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Panel - Fixed Controller</h4>
           <div className="grid grid-cols-2 gap-4 text-xs">
             <div><strong>Game Status:</strong> {currentGame.gameState?.status || 'unknown'}</div>
             <div><strong>Is Paused:</strong> {isPaused ? 'Yes' : 'No'}</div>
