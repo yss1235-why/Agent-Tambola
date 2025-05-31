@@ -1,16 +1,15 @@
-// src/components/GameControls.tsx - OPTIMIZED VERSION
+// src/components/GameControls.tsx - UPDATED to use Command Queue Pattern
+// Simplified controls that send commands instead of complex operations
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { Play, Pause, StopCircle, Volume2, VolumeX } from 'lucide-react';
+import { useGame } from '../contexts/GameContext';
 
 interface GameControlsProps {
   gameStatus: 'active' | 'paused';
   soundEnabled: boolean;
   delaySeconds: number;
-  onStatusChange: (status: 'active' | 'paused') => void;
-  onSoundToggle: () => void;
-  onDelayChange: (seconds: number) => void;
-  onGameEnd: () => void;
+  onGameEnd?: () => void; // Optional callback for UI navigation
   disableControls?: boolean;
 }
 
@@ -18,102 +17,161 @@ function GameControls({
   gameStatus,
   soundEnabled,
   delaySeconds,
-  onStatusChange,
-  onSoundToggle,
-  onDelayChange,
   onGameEnd,
   disableControls = false
 }: GameControlsProps) {
-  // Local state for immediate UI feedback
+  // Get command methods from context
+  const { 
+    updateGameStatus, 
+    updateCallDelay, 
+    updateSoundSettings, 
+    completeGame,
+    isProcessing 
+  } = useGame();
+
+  // Local UI state for immediate feedback
   const [localGameStatus, setLocalGameStatus] = useState(gameStatus);
   const [localSoundEnabled, setLocalSoundEnabled] = useState(soundEnabled);
   const [showEndGameConfirm, setShowEndGameConfirm] = useState(false);
   const [isEditingDelay, setIsEditingDelay] = useState(false);
   const [tempDelay, setTempDelay] = useState<number | string>(delaySeconds);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [commandInProgress, setCommandInProgress] = useState<string | null>(null);
 
-  // Sync with parent props but allow local overrides for immediate feedback
+  // Sync with props but allow optimistic updates
   useEffect(() => {
-    setLocalGameStatus(gameStatus);
-  }, [gameStatus]);
+    if (!commandInProgress) {
+      setLocalGameStatus(gameStatus);
+    }
+  }, [gameStatus, commandInProgress]);
 
   useEffect(() => {
-    setLocalSoundEnabled(soundEnabled);
-  }, [soundEnabled]);
+    if (!commandInProgress) {
+      setLocalSoundEnabled(soundEnabled);
+    }
+  }, [soundEnabled, commandInProgress]);
 
   useEffect(() => {
     setTempDelay(delaySeconds);
   }, [delaySeconds]);
 
-  // Immediate status change with optimistic updates
+  /**
+   * Handle status change with optimistic updates
+   */
   const handleStatusChange = useCallback(async () => {
     if (disableControls || isProcessing) return;
 
     const newStatus = localGameStatus === 'active' ? 'paused' : 'active';
     
-    console.log(`🔄 Quick status change: ${localGameStatus} → ${newStatus}`);
+    console.log(`🔄 Status change command: ${localGameStatus} → ${newStatus}`);
     
-    // Immediate UI update for responsiveness
+    // Optimistic update for immediate UI feedback
     setLocalGameStatus(newStatus);
-    setIsProcessing(true);
+    setCommandInProgress('status');
     
     try {
-      // Call the actual change function
-      await onStatusChange(newStatus);
+      // Send command (returns command ID)
+      const commandId = updateGameStatus(newStatus, newStatus === 'active');
+      console.log(`📤 Status command sent: ${commandId}`);
       
-      // Small delay to show the change happened
+      // Clear command tracking after a delay
       setTimeout(() => {
-        setIsProcessing(false);
-      }, 300);
+        setCommandInProgress(null);
+      }, 1000);
       
     } catch (error) {
-      console.error('❌ Status change failed:', error);
+      console.error('❌ Status command failed:', error);
       
-      // Revert on error
+      // Revert optimistic update on error
       setLocalGameStatus(gameStatus);
-      setIsProcessing(false);
+      setCommandInProgress(null);
     }
-  }, [localGameStatus, gameStatus, onStatusChange, disableControls, isProcessing]);
+  }, [localGameStatus, gameStatus, updateGameStatus, disableControls, isProcessing]);
 
-  // Immediate sound toggle
+  /**
+   * Handle sound toggle with optimistic updates
+   */
   const handleSoundToggle = useCallback(() => {
     if (disableControls) return;
     
-    // Immediate UI update
-    setLocalSoundEnabled(!localSoundEnabled);
+    const newSoundEnabled = !localSoundEnabled;
     
-    // Call parent function
-    onSoundToggle();
-  }, [localSoundEnabled, onSoundToggle, disableControls]);
+    // Optimistic update
+    setLocalSoundEnabled(newSoundEnabled);
+    setCommandInProgress('sound');
+    
+    try {
+      // Send command
+      const commandId = updateSoundSettings(newSoundEnabled);
+      console.log(`📤 Sound command sent: ${commandId}`);
+      
+      // Clear command tracking
+      setTimeout(() => {
+        setCommandInProgress(null);
+      }, 500);
+      
+    } catch (error) {
+      console.error('❌ Sound command failed:', error);
+      
+      // Revert on error
+      setLocalSoundEnabled(soundEnabled);
+      setCommandInProgress(null);
+    }
+  }, [localSoundEnabled, soundEnabled, updateSoundSettings, disableControls]);
 
-  // Handle delay changes
+  /**
+   * Handle delay change
+   */
   const handleDelaySubmit = useCallback(() => {
     const delayValue = typeof tempDelay === 'string' ? 
       (tempDelay === '' ? 3 : parseInt(tempDelay)) : tempDelay;
     
     const validDelay = Math.max(3, Math.min(20, delayValue));
-    console.log(`⏱️ Setting delay to ${validDelay} seconds`);
     
-    onDelayChange(validDelay);
-    setIsEditingDelay(false);
-  }, [tempDelay, onDelayChange]);
+    try {
+      // Send command
+      const commandId = updateCallDelay(validDelay);
+      console.log(`📤 Delay command sent: ${commandId} (${validDelay}s)`);
+      
+      setIsEditingDelay(false);
+      setTempDelay(validDelay);
+      
+    } catch (error) {
+      console.error('❌ Delay command failed:', error);
+      setTempDelay(delaySeconds);
+    }
+  }, [tempDelay, updateCallDelay, delaySeconds]);
 
+  /**
+   * Handle end game
+   */
   const handleEndGame = useCallback(() => {
-    console.log('🏁 Ending game');
-    onGameEnd();
-    setShowEndGameConfirm(false);
-  }, [onGameEnd]);
+    console.log('🏁 Ending game with command');
+    
+    try {
+      // Send complete game command
+      const commandId = completeGame('Manual end by host');
+      console.log(`📤 End game command sent: ${commandId}`);
+      
+      setShowEndGameConfirm(false);
+      
+      // Call optional callback for UI navigation
+      onGameEnd?.();
+      
+    } catch (error) {
+      console.error('❌ End game command failed:', error);
+    }
+  }, [completeGame, onGameEnd]);
 
-  // Determine button text and icons
+  // Determine button states
   const getStatusButtonText = () => {
-    if (isProcessing) {
+    if (commandInProgress === 'status') {
       return localGameStatus === 'active' ? 'Pausing...' : 'Starting...';
     }
     return localGameStatus === 'active' ? 'Pause' : 'Start';
   };
 
   const getStatusButtonIcon = () => {
-    if (isProcessing) {
+    if (commandInProgress === 'status') {
       return (
         <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
       );
@@ -124,7 +182,7 @@ function GameControls({
   };
 
   const getStatusButtonColor = () => {
-    if (disableControls || isProcessing) {
+    if (disableControls || commandInProgress === 'status') {
       return 'bg-gray-400 cursor-not-allowed';
     }
     return localGameStatus === 'active' ? 
@@ -155,7 +213,7 @@ function GameControls({
           {isProcessing && (
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
               <div className="animate-spin h-3 w-3 mr-1 border border-blue-600 border-t-transparent rounded-full" />
-              Updating...
+              Processing...
             </span>
           )}
         </div>
@@ -165,13 +223,15 @@ function GameControls({
           {/* Sound Toggle */}
           <button
             onClick={handleSoundToggle}
-            disabled={disableControls}
+            disabled={disableControls || commandInProgress === 'sound'}
             className={`p-2 rounded-md bg-white border border-gray-300 transition-colors duration-150 ${
-              disableControls ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+              disableControls || commandInProgress === 'sound' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
             }`}
             title={`Sound ${localSoundEnabled ? 'On' : 'Off'}`}
           >
-            {localSoundEnabled ? (
+            {commandInProgress === 'sound' ? (
+              <div className="animate-spin h-5 w-5 border-2 border-gray-400 border-t-transparent rounded-full" />
+            ) : localSoundEnabled ? (
               <Volume2 className="w-5 h-5 text-blue-600" />
             ) : (
               <VolumeX className="w-5 h-5 text-gray-400" />
@@ -232,7 +292,7 @@ function GameControls({
           {/* Main Control Button - Start/Pause */}
           <button
             onClick={handleStatusChange}
-            disabled={disableControls || isProcessing}
+            disabled={disableControls || commandInProgress === 'status'}
             className={`px-4 py-2 rounded-md text-sm font-medium min-w-[100px] flex items-center justify-center text-white transition-all duration-200 ${getStatusButtonColor()}`}
             title={localGameStatus === 'active' ? 'Pause Game' : 'Start Game'}
           >
@@ -308,7 +368,7 @@ function GameControls({
             </p>
             {isProcessing && (
               <p className="mt-1 text-sm text-blue-600 font-medium">
-                Processing your request...
+                📤 Commands are being processed...
               </p>
             )}
           </div>
