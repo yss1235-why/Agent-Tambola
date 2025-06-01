@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - FIXED TypeScript compilation errors
+// src/services/CommandProcessor.ts - FULLY FIXED TypeScript compilation errors
 // Command processor that executes all commands and handles Firebase writes
 // This is the ONLY place where Firebase writes should happen
 
@@ -28,6 +28,18 @@ export class CommandProcessor {
       CommandProcessor.instance = new CommandProcessor();
     }
     return CommandProcessor.instance;
+  }
+
+  /**
+   * Type guard to ensure safe access to Winners properties
+   */
+  private isValidPrizeType(prizeType: string): prizeType is keyof Game.Winners {
+    const validPrizeTypes: (keyof Game.Winners)[] = [
+      'quickFive', 'topLine', 'middleLine', 'bottomLine',
+      'corners', 'starCorners', 'halfSheet', 'fullSheet',
+      'fullHouse', 'secondFullHouse'
+    ];
+    return validPrizeTypes.includes(prizeType as keyof Game.Winners);
   }
   
   /**
@@ -708,7 +720,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Check for prizes after a number is called - FIXED: Complete type safety
+   * Check for prizes after a number is called - FULLY FIXED: Complete type safety
    */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
     try {
@@ -737,11 +749,9 @@ export class CommandProcessor {
         
         for (const result of validationResults) {
           if (result.isWinner && result.winningTickets.length > 0) {
-            // FIXED: Use proper type safety with key validation
-            const prizeKey = result.prizeType as keyof Game.Winners;
-            
-            // Ensure the key is valid before using it
-            if (prizeKey in context.currentWinners) {
+            // FULLY FIXED: Use proper type guard for complete type safety
+            if (this.isValidPrizeType(result.prizeType)) {
+              const prizeKey = result.prizeType; // TypeScript now knows this is safe
               winnersUpdate[prizeKey] = [
                 ...(context.currentWinners[prizeKey] || []),
                 ...result.winningTickets
@@ -761,16 +771,15 @@ export class CommandProcessor {
             }
           });
           
-          // Check if all active prizes have been won - FIXED: Proper type safety
+          // Check if all active prizes have been won - FULLY FIXED: Complete type safety
           const updatedWinners = { ...context.currentWinners, ...winnersUpdate };
           
           const allActivePrizesWon = Object.entries(context.activePrizes)
             .filter(([_, isActive]) => isActive)
             .every(([prizeType]) => {
-              // FIXED: Use type guard for safe indexing
-              if (prizeType in updatedWinners) {
-                const prizeKey = prizeType as keyof Game.Winners;
-                const winners = updatedWinners[prizeKey];
+              // FULLY FIXED: Use type guard for completely safe indexing
+              if (this.isValidPrizeType(prizeType)) {
+                const winners = updatedWinners[prizeType];
                 return winners && winners.length > 0;
               }
               return false;
