@@ -1,4 +1,4 @@
-// src/utils/prizeValidation.ts - FIXED: TypeScript compilation errors
+// src/utils/prizeValidation.ts - COMPLETELY FIXED: All TypeScript compilation errors
 import type { Game } from '../types/game';
 
 export interface ValidationContext {
@@ -69,24 +69,24 @@ function safeWinnersAccess(winners: Game.Winners | undefined | null): Game.Winne
   };
 }
 
-// FIXED: Safe prize settings access helper
+// FIXED: Completely safe prize settings access with explicit boolean conversion
 function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | null): Game.Settings['prizes'] {
   if (!prizes || typeof prizes !== 'object') {
-    return DEFAULT_PRIZE_SETTINGS;
+    return { ...DEFAULT_PRIZE_SETTINGS };
   }
   
-  // Ensure all boolean properties exist with proper defaults
+  // Explicit boolean conversion for each property to prevent type errors
   return {
-    quickFive: Boolean(prizes.quickFive),
-    topLine: Boolean(prizes.topLine),
-    middleLine: Boolean(prizes.middleLine),
-    bottomLine: Boolean(prizes.bottomLine),
-    corners: Boolean(prizes.corners),
-    starCorners: Boolean(prizes.starCorners),
-    halfSheet: Boolean(prizes.halfSheet),
-    fullSheet: Boolean(prizes.fullSheet),
-    fullHouse: Boolean(prizes.fullHouse),
-    secondFullHouse: Boolean(prizes.secondFullHouse)
+    quickFive: Boolean(prizes.quickFive || false),
+    topLine: Boolean(prizes.topLine || false),
+    middleLine: Boolean(prizes.middleLine || false),
+    bottomLine: Boolean(prizes.bottomLine || false),
+    corners: Boolean(prizes.corners || false),
+    starCorners: Boolean(prizes.starCorners || false),
+    halfSheet: Boolean(prizes.halfSheet || false),
+    fullSheet: Boolean(prizes.fullSheet || false),
+    fullHouse: Boolean(prizes.fullHouse || false),
+    secondFullHouse: Boolean(prizes.secondFullHouse || false)
   };
 }
 
@@ -105,6 +105,12 @@ function safeTicketNumbers(ticket: Game.Ticket): number[][] {
   
   // Ensure each row is an array
   return numbers.map(row => Array.isArray(row) ? row : []);
+}
+
+// FIXED: Helper function to safely check if a prize is enabled
+function isPrizeEnabled(activePrizes: Game.Settings['prizes'], prizeType: keyof Game.Settings['prizes']): boolean {
+  const prizeValue = activePrizes[prizeType];
+  return Boolean(prizeValue);
 }
 
 // Pre-computed lookup maps for performance
@@ -204,7 +210,6 @@ function shouldCheckPrize(prizeType: keyof Game.Winners, callCount: number, curr
 
 // FIXED: Fast individual prize validation functions with safe array access
 export function validateQuickFive(ticket: Game.Ticket, calledNumbers: number[]): boolean {
-  // FIXED: Safe access to arrays
   const safeCalledNumbers = safeArrayAccess(calledNumbers);
   const ticketNumbers = safeTicketNumbers(ticket).flat().filter(n => n !== 0);
   const matchCount = ticketNumbers.filter(n => safeCalledNumbers.includes(n)).length;
@@ -212,7 +217,6 @@ export function validateQuickFive(ticket: Game.Ticket, calledNumbers: number[]):
 }
 
 export function validateTopLine(ticket: Game.Ticket, calledNumbers: number[]): boolean {
-  // FIXED: Safe access to arrays
   const safeCalledNumbers = safeArrayAccess(calledNumbers);
   const ticketNumbers = safeTicketNumbers(ticket);
   if (!ticketNumbers[0]) return false;
@@ -221,7 +225,6 @@ export function validateTopLine(ticket: Game.Ticket, calledNumbers: number[]): b
 }
 
 export function validateMiddleLine(ticket: Game.Ticket, calledNumbers: number[]): boolean {
-  // FIXED: Safe access to arrays
   const safeCalledNumbers = safeArrayAccess(calledNumbers);
   const ticketNumbers = safeTicketNumbers(ticket);
   if (!ticketNumbers[1]) return false;
@@ -230,7 +233,6 @@ export function validateMiddleLine(ticket: Game.Ticket, calledNumbers: number[])
 }
 
 export function validateBottomLine(ticket: Game.Ticket, calledNumbers: number[]): boolean {
-  // FIXED: Safe access to arrays
   const safeCalledNumbers = safeArrayAccess(calledNumbers);
   const ticketNumbers = safeTicketNumbers(ticket);
   if (!ticketNumbers[2]) return false;
@@ -239,7 +241,6 @@ export function validateBottomLine(ticket: Game.Ticket, calledNumbers: number[])
 }
 
 export function validateCorners(ticket: Game.Ticket, calledNumbers: number[]): boolean {
-  // FIXED: Safe access to arrays
   const safeCalledNumbers = safeArrayAccess(calledNumbers);
   const ticketNumbers = safeTicketNumbers(ticket);
   
@@ -259,7 +260,6 @@ export function validateCorners(ticket: Game.Ticket, calledNumbers: number[]): b
 }
 
 export function validateStarCorners(ticket: Game.Ticket, calledNumbers: number[]): boolean {
-  // FIXED: Safe access to arrays
   const safeCalledNumbers = safeArrayAccess(calledNumbers);
   
   if (!validateCorners(ticket, calledNumbers)) return false;
@@ -275,7 +275,6 @@ export function validateStarCorners(ticket: Game.Ticket, calledNumbers: number[]
 }
 
 export function validateFullHouse(ticket: Game.Ticket, calledNumbers: number[]): boolean {
-  // FIXED: Safe access to arrays
   const safeCalledNumbers = safeArrayAccess(calledNumbers);
   const allNumbers = safeTicketNumbers(ticket).flat().filter(n => n !== 0);
   return allNumbers.every(n => safeCalledNumbers.includes(n));
@@ -382,7 +381,7 @@ function validateFullSheet(
   return [];
 }
 
-// FIXED: Main optimized validation function with comprehensive null/undefined safety
+// COMPLETELY FIXED: Main validation function with all type safety issues resolved
 export function validateAllPrizes(context: ValidationContext): PrizeValidationResult[] {
   try {
     // FIXED: Safe access to all context properties with proper defaults
@@ -390,7 +389,7 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
     const bookings = context.bookings || {};
     const calledNumbers = safeArrayAccess(context.calledNumbers);
     const currentWinners = safeWinnersAccess(context.currentWinners);
-    const activePrizes = safePrizeSettingsAccess(context.activePrizes); // FIXED: Use safe accessor
+    const activePrizes = safePrizeSettingsAccess(context.activePrizes);
     
     console.log('🔍 Prize validation started:', {
       ticketCount: Object.keys(tickets).length,
@@ -452,8 +451,9 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
         
         const callCount = calledNumbers.length;
         
-        // Quick Five - FIXED: Use boolean values from safe accessor
-        if (activePrizes.quickFive === true && 
+        // COMPLETELY FIXED: All prize checks using safe helper function
+        // Quick Five
+        if (isPrizeEnabled(activePrizes, 'quickFive') && 
             shouldCheckPrize('quickFive', callCount, currentWinners) &&
             !currentWinners.quickFive.includes(ticketId) &&
             validateQuickFive(ticket, calledNumbers)) {
@@ -462,8 +462,8 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
           console.log(`🏆 Quick Five won by ${booking.playerName} with ticket ${ticketId}`);
         }
         
-        // Lines - FIXED: Use boolean values from safe accessor
-        if (activePrizes.topLine === true && 
+        // Top Line
+        if (isPrizeEnabled(activePrizes, 'topLine') && 
             shouldCheckPrize('topLine', callCount, currentWinners) &&
             !currentWinners.topLine.includes(ticketId) &&
             validateTopLine(ticket, calledNumbers)) {
@@ -472,7 +472,8 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
           console.log(`🏆 Top Line won by ${booking.playerName} with ticket ${ticketId}`);
         }
         
-        if (activePrizes.middleLine === true && 
+        // Middle Line
+        if (isPrizeEnabled(activePrizes, 'middleLine') && 
             shouldCheckPrize('middleLine', callCount, currentWinners) &&
             !currentWinners.middleLine.includes(ticketId) &&
             validateMiddleLine(ticket, calledNumbers)) {
@@ -481,7 +482,8 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
           console.log(`🏆 Middle Line won by ${booking.playerName} with ticket ${ticketId}`);
         }
         
-        if (activePrizes.bottomLine === true && 
+        // Bottom Line
+        if (isPrizeEnabled(activePrizes, 'bottomLine') && 
             shouldCheckPrize('bottomLine', callCount, currentWinners) &&
             !currentWinners.bottomLine.includes(ticketId) &&
             validateBottomLine(ticket, calledNumbers)) {
@@ -490,8 +492,8 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
           console.log(`🏆 Bottom Line won by ${booking.playerName} with ticket ${ticketId}`);
         }
         
-        // Corners - FIXED: Use boolean values from safe accessor
-        if (activePrizes.corners === true && 
+        // Corners
+        if (isPrizeEnabled(activePrizes, 'corners') && 
             shouldCheckPrize('corners', callCount, currentWinners) &&
             !currentWinners.corners.includes(ticketId) &&
             validateCorners(ticket, calledNumbers)) {
@@ -500,8 +502,8 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
           console.log(`🏆 Corners won by ${booking.playerName} with ticket ${ticketId}`);
         }
         
-        // Star Corners - FIXED: Use boolean values from safe accessor
-        if (activePrizes.starCorners === true && 
+        // Star Corners
+        if (isPrizeEnabled(activePrizes, 'starCorners') && 
             shouldCheckPrize('starCorners', callCount, currentWinners) &&
             !currentWinners.starCorners.includes(ticketId) &&
             validateStarCorners(ticket, calledNumbers)) {
@@ -510,8 +512,8 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
           console.log(`🏆 Star Corners won by ${booking.playerName} with ticket ${ticketId}`);
         }
         
-        // Full House - FIXED: Use boolean values from safe accessor
-        if (activePrizes.fullHouse === true && 
+        // Full House
+        if (isPrizeEnabled(activePrizes, 'fullHouse') && 
             shouldCheckPrize('fullHouse', callCount, currentWinners) &&
             !currentWinners.fullHouse.includes(ticketId) &&
             validateFullHouse(ticket, calledNumbers)) {
@@ -520,8 +522,8 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
           console.log(`🏆 Full House won by ${booking.playerName} with ticket ${ticketId}`);
         }
         
-        // Second Full House - FIXED: Use boolean values from safe accessor
-        if (activePrizes.secondFullHouse === true && 
+        // Second Full House
+        if (isPrizeEnabled(activePrizes, 'secondFullHouse') && 
             shouldCheckPrize('secondFullHouse', callCount, currentWinners) &&
             !currentWinners.secondFullHouse.includes(ticketId) &&
             validateFullHouse(ticket, calledNumbers)) {
@@ -542,8 +544,8 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
       // Check sheet prizes
       const callCount = calledNumbers.length;
       
-      // Half Sheet - FIXED: Use boolean values from safe accessor
-      if (activePrizes.halfSheet === true && 
+      // Half Sheet
+      if (isPrizeEnabled(activePrizes, 'halfSheet') && 
           shouldCheckPrize('halfSheet', callCount, currentWinners) &&
           currentWinners.halfSheet.length === 0) {
         
@@ -555,13 +557,14 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
         }
       }
       
-      // Full Sheet - FIXED: Use explicit boolean comparisons
-      if (activePrizes.fullSheet === true && 
+      // Full Sheet
+      if (isPrizeEnabled(activePrizes, 'fullSheet') && 
           shouldCheckPrize('fullSheet', callCount, currentWinners) &&
           currentWinners.fullSheet.length === 0) {
         
-        // FIXED: Explicit boolean comparison to avoid type issues
-        const shouldCheckFullSheet = activePrizes.halfSheet !== true || currentWinners.halfSheet.length > 0;
+        // Check if we should validate full sheet (either halfSheet is disabled or already won)
+        const shouldCheckFullSheet = !isPrizeEnabled(activePrizes, 'halfSheet') || 
+                                    currentWinners.halfSheet.length > 0;
         
         if (shouldCheckFullSheet) {
           const fullSheetWinners = validateFullSheet(allPlayerTickets, lookupMaps, tickets, calledNumbers);
