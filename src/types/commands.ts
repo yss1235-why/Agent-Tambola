@@ -1,4 +1,4 @@
-// src/types/commands.ts - FIXED interface extension issues
+// src/types/commands.ts - FIXED all TypeScript compilation errors
 // Command type definitions for the Command Queue Pattern
 // This file defines all possible commands that can be sent through the queue
 
@@ -287,7 +287,7 @@ export function isCancelBookingCommand(command: GameCommand): command is CancelB
   return command.type === 'CANCEL_BOOKING';
 }
 
-// Command factory implementation
+// Command factory implementation - FIXED with proper type annotations
 export const createCommandFactory = (generateId: () => string): CommandFactory => ({
   callNumber: (hostId: string, number: number): CallNumberCommand => ({
     id: generateId(),
