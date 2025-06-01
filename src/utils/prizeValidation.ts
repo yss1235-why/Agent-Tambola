@@ -75,23 +75,23 @@ function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | n
     return { ...DEFAULT_PRIZE_SETTINGS };
   }
   
-  // FIXED: More explicit boolean conversion that TypeScript can understand
+  // FIXED: More explicit boolean conversion that always returns boolean
   const ensureBoolean = (value: unknown): boolean => {
-    // Explicit type checking and conversion
-    if (value === true || value === false) {
-      return value as boolean;
+    // Use Boolean() constructor for guaranteed boolean return
+    if (typeof value === 'boolean') {
+      return value;
     }
     if (typeof value === 'number') {
-      return value !== 0;
+      return Boolean(value !== 0);
     }
     if (typeof value === 'string') {
-      return value !== '' && value !== 'false' && value !== '0';
+      return Boolean(value !== '' && value !== 'false' && value !== '0');
     }
-    // For any other type, convert to boolean explicitly
-    return value ? true : false;
+    // For any other type, use Boolean constructor
+    return Boolean(value);
   };
   
-  // FIXED: Explicit boolean conversion for each property to prevent type errors
+  // FIXED: Explicit boolean conversion for each property using Boolean constructor
   return {
     quickFive: ensureBoolean(prizes.quickFive),
     topLine: ensureBoolean(prizes.topLine),
