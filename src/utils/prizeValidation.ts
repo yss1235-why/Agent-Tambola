@@ -18,18 +18,18 @@ export interface PrizeValidationResult {
   allPrizeTypes: string[];
 }
 
-// Default prize settings to ensure all properties exist
+// Default prize settings to ensure all properties exist - FIXED with explicit type
 const DEFAULT_PRIZE_SETTINGS: Game.Settings['prizes'] = {
-  quickFive: false,
-  topLine: false,
-  middleLine: false,
-  bottomLine: false,
-  corners: false,
-  starCorners: false,
-  halfSheet: false,
-  fullSheet: false,
-  fullHouse: false,
-  secondFullHouse: false
+  quickFive: false as boolean,
+  topLine: false as boolean,
+  middleLine: false as boolean,
+  bottomLine: false as boolean,
+  corners: false as boolean,
+  starCorners: false as boolean,
+  halfSheet: false as boolean,
+  fullSheet: false as boolean,
+  fullHouse: false as boolean,
+  secondFullHouse: false as boolean
 };
 
 // FIXED: Safe array access helper
@@ -75,18 +75,18 @@ function safePrizeSettingsAccess(prizes: any): Game.Settings['prizes'] {
     return { ...DEFAULT_PRIZE_SETTINGS };
   }
   
-  // FIXED: Explicitly type the return object and convert each property to boolean
+  // FIXED: Use explicit type assertions to force boolean conversion
   const result: Game.Settings['prizes'] = {
-    quickFive: Boolean(prizes.quickFive),
-    topLine: Boolean(prizes.topLine),
-    middleLine: Boolean(prizes.middleLine),
-    bottomLine: Boolean(prizes.bottomLine),
-    corners: Boolean(prizes.corners),
-    starCorners: Boolean(prizes.starCorners),
-    halfSheet: Boolean(prizes.halfSheet),
-    fullSheet: Boolean(prizes.fullSheet),
-    fullHouse: Boolean(prizes.fullHouse),
-    secondFullHouse: Boolean(prizes.secondFullHouse)
+    quickFive: !!prizes.quickFive as boolean,
+    topLine: !!prizes.topLine as boolean,
+    middleLine: !!prizes.middleLine as boolean,
+    bottomLine: !!prizes.bottomLine as boolean,
+    corners: !!prizes.corners as boolean,
+    starCorners: !!prizes.starCorners as boolean,
+    halfSheet: !!prizes.halfSheet as boolean,
+    fullSheet: !!prizes.fullSheet as boolean,
+    fullHouse: !!prizes.fullHouse as boolean,
+    secondFullHouse: !!prizes.secondFullHouse as boolean
   };
   
   return result;
@@ -385,12 +385,12 @@ function validateFullSheet(
 // COMPLETELY FIXED: Main validation function with all type safety issues resolved
 export function validateAllPrizes(context: ValidationContext): PrizeValidationResult[] {
   try {
-    // FIXED: Safe access to all context properties with proper defaults
+    // FIXED: Safe access to all context properties with proper defaults and explicit type conversion
     const tickets = context.tickets || {};
     const bookings = context.bookings || {};
     const calledNumbers = safeArrayAccess(context.calledNumbers);
     const currentWinners = safeWinnersAccess(context.currentWinners);
-    const activePrizes = safePrizeSettingsAccess(context.activePrizes);
+    const activePrizes = safePrizeSettingsAccess(context.activePrizes) as Game.Settings['prizes'];
     
     console.log('🔍 Prize validation started:', {
       ticketCount: Object.keys(tickets).length,
