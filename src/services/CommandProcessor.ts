@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - FULLY FIXED TypeScript compilation errors
+// src/services/CommandProcessor.ts - ALL TypeScript compilation errors FIXED
 // Command processor that executes all commands and handles Firebase writes
 // This is the ONLY place where Firebase writes should happen
 
@@ -433,7 +433,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute update prize winners command
+   * Execute update prize winners command - FIXED: All unsafe Winners access
    */
   private async executeUpdatePrizeWinners(command: any, context: CommandContext): Promise<CommandResult> {
     const { prizeType, ticketIds, playerName, phoneNumber, allPrizeTypes } = command.payload;
@@ -443,11 +443,18 @@ export class CommandProcessor {
       throw new Error('No active game found');
     }
     
+    // FIXED: Use type guard before accessing Winners object
+    if (!this.isValidPrizeType(prizeType)) {
+      throw new Error(`Invalid prize type: ${prizeType}`);
+    }
+    
     const currentWinners = currentGame.gameState?.winners || {};
+    const safeCurrentWinners = currentWinners[prizeType] || [];
+    
     const updatedWinners = {
       ...currentWinners,
       [prizeType]: [
-        ...(currentWinners[prizeType] || []),
+        ...safeCurrentWinners,
         ...ticketIds
       ]
     };
@@ -720,7 +727,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Check for prizes after a number is called - FULLY FIXED: Complete type safety
+   * Check for prizes after a number is called - ALL TypeScript errors FIXED
    */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
     try {
@@ -752,13 +759,16 @@ export class CommandProcessor {
             // FULLY FIXED: Use proper type guard for complete type safety
             if (this.isValidPrizeType(result.prizeType)) {
               const prizeKey = result.prizeType; // TypeScript now knows this is safe
+              const currentPrizeWinners = context.currentWinners[prizeKey] || [];
               winnersUpdate[prizeKey] = [
-                ...(context.currentWinners[prizeKey] || []),
+                ...currentPrizeWinners,
                 ...result.winningTickets
               ];
               hasNewWinners = true;
             
               console.log(`🏆 Prize won: ${result.prizeType} by ${result.playerName} with tickets ${result.winningTickets.join(', ')}`);
+            } else {
+              console.warn(`⚠️ Invalid prize type detected: ${result.prizeType}`);
             }
           }
         }
@@ -771,7 +781,7 @@ export class CommandProcessor {
             }
           });
           
-          // Check if all active prizes have been won - FULLY FIXED: Complete type safety
+          // Check if all active prizes have been won - ALL TypeScript errors FIXED
           const updatedWinners = { ...context.currentWinners, ...winnersUpdate };
           
           const allActivePrizesWon = Object.entries(context.activePrizes)
@@ -782,6 +792,7 @@ export class CommandProcessor {
                 const winners = updatedWinners[prizeType];
                 return winners && winners.length > 0;
               }
+              console.warn(`⚠️ Skipping invalid prize type in check: ${prizeType}`);
               return false;
             });
           
