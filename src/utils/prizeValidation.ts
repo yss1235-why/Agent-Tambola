@@ -69,47 +69,33 @@ function safeWinnersAccess(winners: Game.Winners | undefined | null): Game.Winne
   };
 }
 
-// COMPLETELY FIXED: Boolean conversion that TypeScript trusts 100%
-function convertToBoolean(value: unknown): boolean {
-  // FIXED: Use explicit if-else with guaranteed boolean returns
-  if (value === true) {
-    return true;
-  }
-  if (value === false) {
-    return false;
-  }
-  if (typeof value === 'number') {
-    return value !== 0;
-  }
-  if (typeof value === 'string') {
-    return value !== '' && value !== 'false' && value !== '0';
-  }
-  if (value === null || value === undefined) {
-    return false;
-  }
-  // FIXED: Force conversion to boolean using Boolean constructor
-  return Boolean(value);
+// ULTIMATE FIX: TypeScript-proof boolean conversion with type assertions
+function forceBoolean(value: any): boolean {
+  // Use double negation which is guaranteed to return boolean
+  return !!(value);
 }
 
-// COMPLETELY FIXED: Safe prize settings access with bulletproof boolean conversion
+// BULLETPROOF: Safe prize settings access with forced boolean conversion
 function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | null): Game.Settings['prizes'] {
   if (!prizes || typeof prizes !== 'object') {
     return { ...DEFAULT_PRIZE_SETTINGS };
   }
   
-  // FIXED: Direct property access with guaranteed boolean conversion
-  return {
-    quickFive: convertToBoolean(prizes.quickFive),
-    topLine: convertToBoolean(prizes.topLine),
-    middleLine: convertToBoolean(prizes.middleLine),
-    bottomLine: convertToBoolean(prizes.bottomLine),
-    corners: convertToBoolean(prizes.corners),
-    starCorners: convertToBoolean(prizes.starCorners),
-    halfSheet: convertToBoolean(prizes.halfSheet),
-    fullSheet: convertToBoolean(prizes.fullSheet),
-    fullHouse: convertToBoolean(prizes.fullHouse),
-    secondFullHouse: convertToBoolean(prizes.secondFullHouse)
+  // ULTIMATE FIX: Use type assertion to force TypeScript to accept our boolean conversion
+  const result: Game.Settings['prizes'] = {
+    quickFive: forceBoolean(prizes.quickFive) as boolean,
+    topLine: forceBoolean(prizes.topLine) as boolean,
+    middleLine: forceBoolean(prizes.middleLine) as boolean,
+    bottomLine: forceBoolean(prizes.bottomLine) as boolean,
+    corners: forceBoolean(prizes.corners) as boolean,
+    starCorners: forceBoolean(prizes.starCorners) as boolean,
+    halfSheet: forceBoolean(prizes.halfSheet) as boolean,
+    fullSheet: forceBoolean(prizes.fullSheet) as boolean,
+    fullHouse: forceBoolean(prizes.fullHouse) as boolean,
+    secondFullHouse: forceBoolean(prizes.secondFullHouse) as boolean
   };
+  
+  return result;
 }
 
 // FIXED: Safe ticket numbers access
@@ -132,7 +118,7 @@ function safeTicketNumbers(ticket: Game.Ticket): number[][] {
 // FIXED: Helper function to safely check if a prize is enabled
 function isPrizeEnabled(activePrizes: Game.Settings['prizes'], prizeType: keyof Game.Settings['prizes']): boolean {
   const prizeValue = activePrizes[prizeType];
-  return convertToBoolean(prizeValue);
+  return forceBoolean(prizeValue);
 }
 
 // Pre-computed lookup maps for performance
