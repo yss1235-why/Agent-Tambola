@@ -1,5 +1,5 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx - UPDATED to use Command Queue Pattern
-// Simplified playing phase that uses commands instead of complex game controller
+// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhase.tsx - COMPLETE FIXED VERSION
+// Updated to use Command Queue Pattern with safe number generation and fixed prize validation
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -8,6 +8,43 @@ import { useGame } from '../../../../contexts/GameContext';
 import { LoadingSpinner } from '@components';
 import PlayingPhaseView from './PlayingPhaseView';
 import { Game } from '../../../../types/game';
+import { CommandProcessor } from '../../../../services/CommandProcessor';
+
+// Helper hook for safe number generation
+function useNumberGenerator(calledNumbers: number[]) {
+  const generateNumber = useCallback((): number | null => {
+    return CommandProcessor.generateAvailableNumber(calledNumbers);
+  }, [calledNumbers]);
+  
+  const getAvailableNumbers = useCallback((): number[] => {
+    return CommandProcessor.getAvailableNumbers(calledNumbers);
+  }, [calledNumbers]);
+  
+  const getRemainingCount = useCallback((): number => {
+    return 90 - calledNumbers.length;
+  }, [calledNumbers.length]);
+  
+  const getCalledCount = useCallback((): number => {
+    return calledNumbers.length;
+  }, [calledNumbers.length]);
+  
+  const isAllNumbersCalled = useCallback((): boolean => {
+    return calledNumbers.length >= 90;
+  }, [calledNumbers.length]);
+  
+  const canGenerateMore = useCallback((): boolean => {
+    return calledNumbers.length < 90;
+  }, [calledNumbers.length]);
+  
+  return {
+    generateNumber,
+    getAvailableNumbers,
+    getRemainingCount,
+    getCalledCount,
+    isAllNumbersCalled,
+    canGenerateMore
+  };
+}
 
 const PlayingPhase: React.FC = () => {
   const { currentUser } = useAuth();
@@ -38,6 +75,17 @@ const PlayingPhase: React.FC = () => {
   const isAutoCallingRef = useRef(false);
   const hasInitialized = useRef(false);
 
+  // FIXED: Safe number generation with duplicate prevention
+  const calledNumbers = currentGame?.numberSystem?.calledNumbers || [];
+  const {
+    generateNumber,
+    getRemainingCount,
+    getCalledCount,
+    isAllNumbersCalled,
+    canGenerateMore,
+    getAvailableNumbers
+  } = useNumberGenerator(calledNumbers);
+
   // Initialize component
   useEffect(() => {
     if (!currentUser?.uid) {
@@ -50,7 +98,8 @@ const PlayingPhase: React.FC = () => {
         console.log("PlayingPhase initialized with game:", {
           status: currentGame.gameState?.status,
           phase: currentGame.gameState?.phase,
-          calledNumbers: currentGame.numberSystem?.calledNumbers?.length || 0,
+          calledNumbers: calledNumbers.length,
+          remainingNumbers: getRemainingCount(),
           allPrizesWon: currentGame.gameState?.allPrizesWon
         });
         hasInitialized.current = true;
@@ -58,7 +107,8 @@ const PlayingPhase: React.FC = () => {
       
       const isComplete = currentGame.gameState?.status === 'ended' || 
                         currentGame.gameState?.phase === 4 ||
-                        currentGame.gameState?.allPrizesWon === true; // Fixed type issue
+                        currentGame.gameState?.allPrizesWon === true ||
+                        isAllNumbersCalled();
       
       setIsLoading(false);
       setIsGameComplete(isComplete);
@@ -67,11 +117,14 @@ const PlayingPhase: React.FC = () => {
       
       // Update auto-calling state
       const shouldAutoCalling = currentGame.gameState?.status === 'active' && 
-                               currentGame.gameState?.isAutoCalling === true && // Fixed type issue
-                               !isComplete;
+                               currentGame.gameState?.isAutoCalling === true &&
+                               !isComplete &&
+                               canGenerateMore();
       
       if (shouldAutoCalling !== isAutoCallingRef.current) {
         console.log(`🔄 Auto-calling state changed: ${isAutoCallingRef.current} → ${shouldAutoCalling}`);
+        console.log(`📊 Game stats: called=${getCalledCount()}, remaining=${getRemainingCount()}, canGenerate=${canGenerateMore()}`);
+        
         isAutoCallingRef.current = shouldAutoCalling;
         
         if (shouldAutoCalling) {
@@ -80,8 +133,16 @@ const PlayingPhase: React.FC = () => {
           stopAutoCalling();
         }
       }
+      
+      // Auto-end game if all numbers called
+      if (isAllNumbersCalled() && currentGame.gameState?.status !== 'ended') {
+        console.log('🏁 All numbers called, auto-ending game...');
+        setTimeout(() => {
+          handleGameEnd();
+        }, 2000);
+      }
     }
-  }, [currentUser, currentGame, navigate]);
+  }, [currentUser, currentGame, navigate, canGenerateMore, getCalledCount, getRemainingCount, isAllNumbersCalled]);
 
   // Sync with game error
   useEffect(() => {
@@ -91,25 +152,25 @@ const PlayingPhase: React.FC = () => {
   }, [gameError]);
 
   /**
-   * Start auto-calling numbers
+   * FIXED: Start auto-calling numbers with safe generation
    */
   const startAutoCalling = useCallback(() => {
     if (autoCallTimer.current) {
       clearTimeout(autoCallTimer.current);
     }
     
-    if (!currentGame || isGameComplete) {
-      console.log('❌ Cannot start auto-calling: no game or game complete');
+    if (!currentGame || isGameComplete || !canGenerateMore()) {
+      console.log('❌ Cannot start auto-calling:', {
+        hasGame: !!currentGame,
+        isComplete: isGameComplete,
+        canGenerate: canGenerateMore(),
+        remaining: getRemainingCount(),
+        allCalled: isAllNumbersCalled()
+      });
       return;
     }
     
-    const calledNumbers = currentGame.numberSystem?.calledNumbers || [];
-    if (calledNumbers.length >= 90) {
-      console.log('❌ Cannot start auto-calling: all numbers called');
-      return;
-    }
-    
-    console.log(`⏰ Starting auto-calling with ${callDelay}s delay`);
+    console.log(`⏰ Starting auto-calling with ${callDelay}s delay (${getRemainingCount()} numbers remaining)`);
     
     const scheduleNext = () => {
       if (!isAutoCallingRef.current) {
@@ -117,41 +178,51 @@ const PlayingPhase: React.FC = () => {
         return;
       }
       
+      // Check if we can still generate numbers
+      const currentCalledNumbers = currentGame?.numberSystem?.calledNumbers || [];
+      const availableCount = 90 - currentCalledNumbers.length;
+      
+      if (availableCount <= 0) {
+        console.log('🏁 All numbers called, stopping auto-calling');
+        isAutoCallingRef.current = false;
+        return;
+      }
+      
       autoCallTimer.current = setTimeout(() => {
         if (isAutoCallingRef.current && currentGame) {
-          const currentCalledNumbers = currentGame.numberSystem?.calledNumbers || [];
+          // FIXED: Use safe number generation
+          const numberToCall = generateNumber();
           
-          if (currentCalledNumbers.length < 90) {
-            // Generate random available number
-            const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
-              .filter(n => !currentCalledNumbers.includes(n));
+          if (numberToCall !== null) {
+            console.log(`🎲 Auto-calling number: ${numberToCall} (${availableCount - 1} remaining)`);
             
-            if (availableNumbers.length > 0) {
-              const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-              const numberToCall = availableNumbers[randomIndex];
-              
-              console.log(`🎲 Auto-calling number: ${numberToCall}`);
-              
-              try {
-                callNumber(numberToCall);
-              } catch (error) {
-                console.error('❌ Auto-call failed:', error);
-                setError('Auto-calling failed');
-              }
-              
-              // Schedule next call
+            try {
+              callNumber(numberToCall);
+            } catch (error) {
+              console.error('❌ Auto-call failed:', error);
+              setError('Auto-calling failed');
+              isAutoCallingRef.current = false;
+              return;
+            }
+            
+            // Schedule next call if more numbers available
+            const newAvailableCount = availableCount - 1;
+            if (newAvailableCount > 0 && isAutoCallingRef.current) {
               scheduleNext();
             } else {
-              console.log('🏁 All numbers called, stopping auto-calling');
+              console.log('🏁 All numbers called or auto-calling stopped');
               isAutoCallingRef.current = false;
             }
+          } else {
+            console.log('🏁 No more numbers available, stopping auto-calling');
+            isAutoCallingRef.current = false;
           }
         }
       }, callDelay * 1000);
     };
     
     scheduleNext();
-  }, [currentGame, isGameComplete, callDelay, callNumber]);
+  }, [currentGame, isGameComplete, callDelay, callNumber, generateNumber, canGenerateMore, getRemainingCount]);
 
   /**
    * Stop auto-calling
@@ -172,6 +243,34 @@ const PlayingPhase: React.FC = () => {
       stopAutoCalling();
     };
   }, [stopAutoCalling]);
+
+  /**
+   * FIXED: Manual number calling with safe generation
+   */
+  const callRandomNumber = useCallback(() => {
+    if (!currentGame) {
+      setError('No active game found');
+      return;
+    }
+    
+    if (!canGenerateMore()) {
+      setError('All 90 numbers have been called');
+      return;
+    }
+    
+    const number = generateNumber();
+    if (number !== null) {
+      console.log(`🎲 Manually calling number: ${number}`);
+      try {
+        callNumber(number);
+      } catch (error) {
+        console.error('❌ Manual call failed:', error);
+        setError('Failed to call number');
+      }
+    } else {
+      setError('Failed to generate number - all numbers may have been called');
+    }
+  }, [currentGame, generateNumber, canGenerateMore, callNumber]);
 
   /**
    * Handle delay change using command
@@ -220,6 +319,11 @@ const PlayingPhase: React.FC = () => {
       return;
     }
     
+    if (isAllNumbersCalled() && status === 'active') {
+      setError('Cannot resume game: All numbers have been called');
+      return;
+    }
+    
     console.log(`🎮 Changing game status to: ${status}`);
     
     try {
@@ -229,7 +333,7 @@ const PlayingPhase: React.FC = () => {
       console.error("❌ Error changing game status:", err);
       setError('Failed to change game status');
     }
-  }, [currentGame?.gameState?.allPrizesWon, isGameComplete, updateGameStatus]);
+  }, [currentGame?.gameState?.allPrizesWon, isGameComplete, isAllNumbersCalled, updateGameStatus]);
 
   /**
    * Handle game end using command
@@ -239,17 +343,26 @@ const PlayingPhase: React.FC = () => {
       console.log('🏁 Ending game with command...');
       setIsGameComplete(true);
       
-      const commandId = completeGame('Manual end by host');
+      // Stop auto-calling immediately
+      stopAutoCalling();
+      
+      const reason = isAllNumbersCalled() 
+        ? 'All 90 numbers have been called'
+        : currentGame?.gameState?.allPrizesWon
+        ? 'All prizes have been won'
+        : 'Manual end by host';
+      
+      const commandId = completeGame(reason);
       console.log(`📤 Complete game command sent: ${commandId}`);
       
       setTimeout(() => {
         navigate('/dashboard');
-      }, 2000);
+      }, 3000);
     } catch (err) {
       console.error('❌ Failed to end game:', err);
       setError('Failed to end game');
     }
-  }, [completeGame, navigate]);
+  }, [completeGame, navigate, isAllNumbersCalled, currentGame?.gameState?.allPrizesWon, stopAutoCalling]);
 
   /**
    * Handle start new game
@@ -270,7 +383,10 @@ const PlayingPhase: React.FC = () => {
   if (isLoading || !currentGame) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner size="large" />
+        <div className="text-center">
+          <LoadingSpinner size="large" />
+          <p className="mt-4 text-gray-600">Loading game...</p>
+        </div>
       </div>
     );
   }
@@ -295,37 +411,137 @@ const PlayingPhase: React.FC = () => {
   };
 
   const isPaused = currentGame.gameState?.status === 'paused' || !currentGame.gameState?.isAutoCalling;
-  const allPrizesWon = currentGame.gameState?.allPrizesWon === true; // Fixed type issue
+  const allPrizesWon = currentGame.gameState?.allPrizesWon === true;
+  const allNumbersCalled = isAllNumbersCalled();
 
   return (
     <div className="space-y-4">
       {/* Debug panel for development */}
       {process.env.NODE_ENV === 'development' && (
         <div className="bg-gray-100 p-4 rounded-lg border">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Panel - Command Queue System</h4>
-          <div className="grid grid-cols-2 gap-4 text-xs">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Panel - Enhanced Number System</h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
             <div><strong>Game Status:</strong> {currentGame.gameState?.status || 'unknown'}</div>
             <div><strong>Is Paused:</strong> {isPaused ? 'Yes' : 'No'}</div>
             <div><strong>Auto Calling:</strong> {isAutoCallingRef.current ? 'Yes' : 'No'}</div>
-            <div><strong>Numbers Called:</strong> {currentGame.numberSystem?.calledNumbers?.length || 0}/90</div>
+            <div><strong>Numbers Called:</strong> {getCalledCount()}/90</div>
+            <div><strong>Numbers Remaining:</strong> {getRemainingCount()}</div>
             <div><strong>Current Number:</strong> {currentGame.numberSystem?.currentNumber || 'None'}</div>
             <div><strong>All Prizes Won:</strong> {allPrizesWon ? 'Yes' : 'No'}</div>
+            <div><strong>All Numbers Called:</strong> {allNumbersCalled ? 'Yes' : 'No'}</div>
             <div><strong>Game Complete:</strong> {isGameComplete ? 'Yes' : 'No'}</div>
             <div><strong>Processing Commands:</strong> {isProcessing ? 'Yes' : 'No'}</div>
+            <div><strong>Can Generate More:</strong> {canGenerateMore() ? 'Yes' : 'No'}</div>
+            <div><strong>Available Numbers:</strong> {getAvailableNumbers().slice(0, 5).join(', ')}{getAvailableNumbers().length > 5 ? '...' : ''}</div>
+          </div>
+          
+          {/* Manual Controls for Testing */}
+          <div className="mt-4 pt-4 border-t border-gray-300">
+            <h5 className="text-sm font-medium text-gray-700 mb-2">Manual Controls</h5>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={callRandomNumber}
+                disabled={!canGenerateMore() || isProcessing}
+                className={`px-3 py-1 text-xs rounded ${
+                  canGenerateMore() && !isProcessing
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Call Random ({getRemainingCount()} left)
+              </button>
+              
+              <button
+                onClick={() => handleStatusChange(isPaused ? 'active' : 'paused')}
+                disabled={isProcessing}
+                className="px-3 py-1 text-xs rounded bg-yellow-600 text-white hover:bg-yellow-700"
+              >
+                {isPaused ? 'Resume' : 'Pause'}
+              </button>
+              
+              <button
+                onClick={handleGameEnd}
+                disabled={isProcessing}
+                className="px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700"
+              >
+                End Game
+              </button>
+            </div>
           </div>
         </div>
       )}
 
+      {/* Game Progress Overview */}
+      <div className="bg-white rounded-lg shadow-sm border p-4">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Game Progress</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-3 border rounded-lg bg-blue-50">
+            <div className="text-sm text-blue-600 font-medium">Numbers Called</div>
+            <div className="text-2xl font-bold text-blue-800">
+              {getCalledCount()}<span className="text-lg text-blue-600">/90</span>
+            </div>
+          </div>
+          
+          <div className="p-3 border rounded-lg bg-green-50">
+            <div className="text-sm text-green-600 font-medium">Remaining</div>
+            <div className="text-2xl font-bold text-green-800">
+              {getRemainingCount()}
+            </div>
+          </div>
+          
+          <div className="p-3 border rounded-lg bg-purple-50">
+            <div className="text-sm text-purple-600 font-medium">Progress</div>
+            <div className="text-2xl font-bold text-purple-800">
+              {Math.round((getCalledCount() / 90) * 100)}%
+            </div>
+          </div>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="mt-4">
+          <div className="w-full bg-gray-200 rounded-full h-3">
+            <div 
+              className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all duration-500"
+              style={{ width: `${(getCalledCount() / 90) * 100}%` }}
+            />
+          </div>
+        </div>
+        
+        {/* Status Messages */}
+        {getRemainingCount() <= 10 && getRemainingCount() > 0 && (
+          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+            <div className="flex items-center text-yellow-800">
+              <span className="text-lg mr-2">⚠️</span>
+              <span className="font-medium">
+                Only {getRemainingCount()} numbers remaining! Game is nearing completion.
+              </span>
+            </div>
+          </div>
+        )}
+        
+        {allNumbersCalled && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
+            <div className="flex items-center text-red-800">
+              <span className="text-lg mr-2">🏁</span>
+              <span className="font-medium">
+                All 90 numbers have been called! The game is complete.
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Main Playing Phase View */}
       <PlayingPhaseView
         currentGame={currentGame}
         winners={winners}
         soundEnabled={soundEnabled}
         callDelay={callDelay}
         error={error}
-        isGameComplete={isGameComplete}
+        isGameComplete={isGameComplete || allNumbersCalled}
         isProcessing={isProcessing}
         queueNumbers={[]} // No queue in command system
-        allPrizesWon={allPrizesWon}
+        allPrizesWon={allPrizesWon || allNumbersCalled}
         onSoundToggle={handleSoundToggle}
         onDelayChange={handleDelayChange}
         onGameEnd={handleGameEnd}
