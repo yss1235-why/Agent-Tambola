@@ -75,24 +75,18 @@ function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | n
     return { ...DEFAULT_PRIZE_SETTINGS };
   }
   
-  // FIXED: Ultra-explicit boolean conversion that TypeScript can definitively understand
-  const ensureBoolean = (value: unknown): boolean => {
-    // Use double negation for guaranteed boolean conversion
-    return !!value;
-  };
-  
-  // FIXED: Explicit boolean conversion for each property to prevent type errors
+  // FIXED: Direct property access with explicit boolean coercion
   return {
-    quickFive: ensureBoolean(prizes.quickFive),
-    topLine: ensureBoolean(prizes.topLine),
-    middleLine: ensureBoolean(prizes.middleLine),
-    bottomLine: ensureBoolean(prizes.bottomLine),
-    corners: ensureBoolean(prizes.corners),
-    starCorners: ensureBoolean(prizes.starCorners),
-    halfSheet: ensureBoolean(prizes.halfSheet),
-    fullSheet: ensureBoolean(prizes.fullSheet),
-    fullHouse: ensureBoolean(prizes.fullHouse),
-    secondFullHouse: ensureBoolean(prizes.secondFullHouse)
+    quickFive: Boolean(prizes.quickFive),
+    topLine: Boolean(prizes.topLine),
+    middleLine: Boolean(prizes.middleLine),
+    bottomLine: Boolean(prizes.bottomLine),
+    corners: Boolean(prizes.corners),
+    starCorners: Boolean(prizes.starCorners),
+    halfSheet: Boolean(prizes.halfSheet),
+    fullSheet: Boolean(prizes.fullSheet),
+    fullHouse: Boolean(prizes.fullHouse),
+    secondFullHouse: Boolean(prizes.secondFullHouse)
   };
 }
 
@@ -115,8 +109,7 @@ function safeTicketNumbers(ticket: Game.Ticket): number[][] {
 
 // FIXED: Helper function to safely check if a prize is enabled
 function isPrizeEnabled(activePrizes: Game.Settings['prizes'], prizeType: keyof Game.Settings['prizes']): boolean {
-  const prizeValue = activePrizes[prizeType];
-  return Boolean(prizeValue);
+  return Boolean(activePrizes[prizeType]);
 }
 
 // Pre-computed lookup maps for performance
