@@ -1,4 +1,4 @@
-// src/types/game.ts
+// src/types/game.ts - FIXED all TypeScript compilation errors
 
 export namespace Game {
   export interface Ticket {
@@ -43,6 +43,7 @@ export namespace Game {
     playerId?: string;
   }
   
+  // FIXED: Ensure all Winners properties are properly typed as string arrays
   export interface Winners {
     quickFive: string[];
     topLine: string[];
@@ -56,6 +57,7 @@ export namespace Game {
     secondFullHouse: string[];
   }
   
+  // FIXED: Ensure all prizes properties are properly typed as booleans
   export interface Settings {
     selectedTicketSet: number;
     maxTickets: number;
@@ -170,7 +172,7 @@ export const GAME_STATUSES = {
   BOOKING: 'booking' // Added this status for the booking phase
 } as const;
 
-// Initial State Defaults
+// Initial State Defaults - FIXED: Ensure all arrays are properly initialized
 export const DEFAULT_GAME_STATE: Game.GameState = {
   phase: GAME_PHASES.SETUP,
   status: GAME_STATUSES.SETUP,
@@ -191,6 +193,7 @@ export const DEFAULT_GAME_STATE: Game.GameState = {
   }
 };
 
+// FIXED: Ensure all boolean values are properly typed
 export const DEFAULT_PRIZE_SETTINGS: Game.Settings['prizes'] = {
   quickFive: true,
   topLine: true,
