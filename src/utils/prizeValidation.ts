@@ -75,18 +75,26 @@ function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | n
     return { ...DEFAULT_PRIZE_SETTINGS };
   }
   
-  // Explicit boolean conversion for each property to prevent type errors
+  // Helper function to safely convert any value to boolean
+  const toBoolean = (value: any): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') return value !== '' && value !== 'false' && value !== '0';
+    return Boolean(value);
+  };
+  
+  // FIXED: Explicit boolean conversion for each property to prevent type errors
   return {
-    quickFive: Boolean(prizes.quickFive || false),
-    topLine: Boolean(prizes.topLine || false),
-    middleLine: Boolean(prizes.middleLine || false),
-    bottomLine: Boolean(prizes.bottomLine || false),
-    corners: Boolean(prizes.corners || false),
-    starCorners: Boolean(prizes.starCorners || false),
-    halfSheet: Boolean(prizes.halfSheet || false),
-    fullSheet: Boolean(prizes.fullSheet || false),
-    fullHouse: Boolean(prizes.fullHouse || false),
-    secondFullHouse: Boolean(prizes.secondFullHouse || false)
+    quickFive: toBoolean(prizes.quickFive),
+    topLine: toBoolean(prizes.topLine),
+    middleLine: toBoolean(prizes.middleLine),
+    bottomLine: toBoolean(prizes.bottomLine),
+    corners: toBoolean(prizes.corners),
+    starCorners: toBoolean(prizes.starCorners),
+    halfSheet: toBoolean(prizes.halfSheet),
+    fullSheet: toBoolean(prizes.fullSheet),
+    fullHouse: toBoolean(prizes.fullHouse),
+    secondFullHouse: toBoolean(prizes.secondFullHouse)
   };
 }
 
