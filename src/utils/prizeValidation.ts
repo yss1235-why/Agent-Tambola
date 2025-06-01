@@ -18,7 +18,20 @@ export interface PrizeValidationResult {
   allPrizeTypes: string[];
 }
 
-const DEFAULT_PRIZE_SETTINGS: Game.Settings['prizes'] = {
+type PrizeSettings = {
+  quickFive: boolean;
+  topLine: boolean;
+  middleLine: boolean;
+  bottomLine: boolean;
+  corners: boolean;
+  starCorners: boolean;
+  halfSheet: boolean;
+  fullSheet: boolean;
+  fullHouse: boolean;
+  secondFullHouse: boolean;
+};
+
+const DEFAULT_PRIZE_SETTINGS: PrizeSettings = {
   quickFive: false,
   topLine: false,
   middleLine: false,
@@ -64,7 +77,7 @@ function safeWinnersAccess(winners: Game.Winners | undefined | null): Game.Winne
   };
 }
 
-function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | null): Game.Settings['prizes'] {
+function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | null): PrizeSettings {
   if (!prizes || typeof prizes !== 'object') {
     return { ...DEFAULT_PRIZE_SETTINGS };
   }
@@ -104,9 +117,8 @@ function safeTicketNumbers(ticket: Game.Ticket): number[][] {
   return numbers.map(row => Array.isArray(row) ? row : []);
 }
 
-function isPrizeEnabled(activePrizes: Game.Settings['prizes'], prizeType: keyof Game.Settings['prizes']): boolean {
-  const prizeValue = activePrizes[prizeType];
-  return Boolean(prizeValue);
+function isPrizeEnabled(activePrizes: PrizeSettings, prizeType: keyof PrizeSettings): boolean {
+  return activePrizes[prizeType];
 }
 
 class ValidationLookupMaps {
@@ -236,7 +248,7 @@ export function validateCorners(ticket: Game.Ticket, calledNumbers: number[]): b
     bottomRow[bottomRow.length - 1]
   ];
   
-  return corners.every(n => n && safeCalledNumbers.includes(n));
+  return corners.every(n => n != null && safeCalledNumbers.includes(n));
 }
 
 export function validateStarCorners(ticket: Game.Ticket, calledNumbers: number[]): boolean {
@@ -246,12 +258,10 @@ export function validateStarCorners(ticket: Game.Ticket, calledNumbers: number[]
   
   const ticketNumbers = safeTicketNumbers(ticket);
   const middleRow = ticketNumbers[1] ? ticketNumbers[1].filter(n => n !== 0) : [];
-  if (middleRow.length === 0) return false;
+  if (middleRow.length < 5) return false;
   
-  const centerIndex = Math.floor(middleRow.length / 2);
-  const centerNumber = middleRow[centerIndex];
-  
-  return centerNumber && safeCalledNumbers.includes(centerNumber);
+  const centerNumber = middleRow[2];
+  return centerNumber != null && safeCalledNumbers.includes(centerNumber);
 }
 
 export function validateFullHouse(ticket: Game.Ticket, calledNumbers: number[]): boolean {
@@ -360,7 +370,7 @@ function validateFullSheet(
 export function validateAllPrizes(context: ValidationContext): PrizeValidationResult[] {
   try {
     const tickets = context.tickets || {};
-    const bookings = context.bookings || {};
+    const bookings = context.bookings Benito|| {};
     const calledNumbers = safeArrayAccess(context.calledNumbers);
     const currentWinners = safeWinnersAccess(context.currentWinners);
     const activePrizes = safePrizeSettingsAccess(context.activePrizes);
