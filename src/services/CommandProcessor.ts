@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - FIXED type casting and indexing issues
+// src/services/CommandProcessor.ts - FIXED TypeScript compilation errors
 // Command processor that executes all commands and handles Firebase writes
 // This is the ONLY place where Firebase writes should happen
 
@@ -757,15 +757,23 @@ export class CommandProcessor {
             }
           });
           
-          // Check if all active prizes have been won
+          // Check if all active prizes have been won - FIXED: Proper type safety
           const updatedWinners = { ...context.currentWinners, ...winnersUpdate };
+          
+          // Create a type-safe function to check if a prize type is valid
+          const isValidPrizeType = (prizeType: string): prizeType is keyof Game.Winners => {
+            return prizeType in updatedWinners;
+          };
+          
           const allActivePrizesWon = Object.entries(context.activePrizes)
             .filter(([_, isActive]) => isActive)
             .every(([prizeType]) => {
-              // FIXED: Use proper type assertion for safe indexing
-              const prizeKey = prizeType as keyof Game.Winners;
-              const winners = updatedWinners[prizeKey];
-              return winners && winners.length > 0;
+              // FIXED: Use type guard for safe indexing
+              if (isValidPrizeType(prizeType)) {
+                const winners = updatedWinners[prizeType];
+                return winners && winners.length > 0;
+              }
+              return false;
             });
           
           if (allActivePrizesWon) {
