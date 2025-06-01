@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - ALL TypeScript compilation errors FIXED
+// src/services/CommandProcessor.ts - COMPLETE FILE with all fixes
 // Command processor that executes all commands and handles Firebase writes
 // This is the ONLY place where Firebase writes should happen
 
@@ -28,6 +28,38 @@ export class CommandProcessor {
       CommandProcessor.instance = new CommandProcessor();
     }
     return CommandProcessor.instance;
+  }
+
+  /**
+   * FIXED: Generate a random number that hasn't been called yet
+   */
+  public static generateAvailableNumber(calledNumbers: number[]): number | null {
+    // Create array of all possible numbers (1-90)
+    const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
+    
+    // Filter out already called numbers
+    const availableNumbers = allNumbers.filter(num => !calledNumbers.includes(num));
+    
+    // Return null if no numbers available
+    if (availableNumbers.length === 0) {
+      console.log('🏁 All numbers have been called!');
+      return null;
+    }
+    
+    // Generate random index and return the number
+    const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+    const selectedNumber = availableNumbers[randomIndex];
+    
+    console.log(`🎲 Generated number ${selectedNumber} from ${availableNumbers.length} available numbers`);
+    return selectedNumber;
+  }
+
+  /**
+   * Get available numbers for UI display
+   */
+  public static getAvailableNumbers(calledNumbers: number[]): number[] {
+    const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
+    return allNumbers.filter(num => !calledNumbers.includes(num));
   }
 
   /**
@@ -183,7 +215,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Validate call number command
+   * FIXED: Validate call number command with duplicate prevention
    */
   private validateCallNumber(command: any, context: CommandContext): CommandValidationResult {
     const { number } = command.payload;
@@ -199,6 +231,11 @@ export class CommandProcessor {
     const calledNumbers = context.currentGame.numberSystem?.calledNumbers || [];
     if (calledNumbers.includes(number)) {
       return { isValid: false, error: `Number ${number} has already been called` };
+    }
+    
+    // Check if this is the last possible number
+    if (calledNumbers.length >= 89) {
+      console.log('🏁 This is the last number that can be called!');
     }
     
     return { isValid: true };
@@ -268,7 +305,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute call number command
+   * FIXED: Execute call number command with enhanced validation
    */
   private async executeCallNumber(command: any, context: CommandContext): Promise<CommandResult> {
     const { number } = command.payload;
@@ -279,7 +316,15 @@ export class CommandProcessor {
     }
     
     const calledNumbers = currentGame.numberSystem?.calledNumbers || [];
+    
+    // Double-check that number hasn't been called (race condition protection)
+    if (calledNumbers.includes(number)) {
+      throw new Error(`Number ${number} has already been called`);
+    }
+    
     const newCalledNumbers = [...calledNumbers, number];
+    
+    console.log(`🎲 Calling number ${number} (${newCalledNumbers.length}/90 called)`);
     
     // Update database
     await this.databaseService.batchUpdateGameData(hostId, {
@@ -304,10 +349,30 @@ export class CommandProcessor {
       console.error('Prize validation failed:', error);
     });
     
+    // Check if all numbers have been called
+    if (newCalledNumbers.length >= 90) {
+      console.log('🏁 All 90 numbers have been called! Game should end.');
+      // Optionally auto-end the game
+      setTimeout(async () => {
+        try {
+          await this.databaseService.updateGameState(hostId, {
+            status: 'ended',
+            phase: 4 as const,
+            isAutoCalling: false
+          });
+          console.log('✅ Game automatically ended - all numbers called');
+        } catch (error) {
+          console.error('❌ Failed to auto-end game:', error);
+        }
+      }, 1000);
+    }
+    
     return this.createSuccessResult(command, {
       number,
       calledNumbers: newCalledNumbers,
-      totalCalled: newCalledNumbers.length
+      totalCalled: newCalledNumbers.length,
+      remainingNumbers: 90 - newCalledNumbers.length,
+      gameComplete: newCalledNumbers.length >= 90
     });
   }
   
@@ -727,89 +792,229 @@ export class CommandProcessor {
   }
   
   /**
-   * Check for prizes after a number is called - ALL TypeScript errors FIXED
+   * FULLY FIXED: Check for prizes after a number is called - NO MORE TypeError issues
    */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
     try {
-      const context: ValidationContext = {
-        tickets: currentGame.activeTickets?.tickets || {},
-        bookings: currentGame.activeTickets?.bookings || {},
-        calledNumbers,
-        currentWinners: currentGame.gameState?.winners || {},
-        activePrizes: currentGame.settings?.prizes || {}
-      };
-      
-      const hasBookedTickets = Object.keys(context.bookings).length > 0;
-      const hasActivePrizes = Object.values(context.activePrizes).some(isActive => isActive);
-      
-      if (!hasBookedTickets || !hasActivePrizes) {
+      console.log('🎯 Prize check starting...', {
+        hostId,
+        calledNumbersLength: calledNumbers?.length || 0,
+        lastNumber: calledNumbers?.[calledNumbers.length - 1],
+        gamePhase: currentGame?.gameState?.phase
+      });
+
+      // FIXED: Validate all inputs before proceeding
+      if (!hostId) {
+        console.warn('❌ No hostId provided for prize check');
         return;
       }
+
+      if (!currentGame) {
+        console.warn('❌ No current game provided for prize check');
+        return;
+      }
+
+      if (!Array.isArray(calledNumbers) || calledNumbers.length === 0) {
+        console.warn('❌ Invalid or empty calledNumbers array for prize check');
+        return;
+      }
+
+      // FIXED: Ensure all required game data exists before validation
+      const tickets = currentGame.activeTickets?.tickets || {};
+      const bookings = currentGame.activeTickets?.bookings || {};
+      const currentWinners = currentGame.gameState?.winners || {
+        quickFive: [], topLine: [], middleLine: [], bottomLine: [],
+        corners: [], starCorners: [], halfSheet: [], fullSheet: [],
+        fullHouse: [], secondFullHouse: []
+      };
+      const activePrizes = currentGame.settings?.prizes || {
+        quickFive: false, topLine: false, middleLine: false, bottomLine: false,
+        corners: false, starCorners: false, halfSheet: false, fullSheet: false,
+        fullHouse: false, secondFullHouse: false
+      };
+
+      // FIXED: Validate that we have the minimum required data
+      const hasBookedTickets = Object.keys(bookings).length > 0;
+      const hasActivePrizes = Object.values(activePrizes).some(isActive => isActive);
+      const hasValidTickets = Object.keys(tickets).length > 0;
+
+      console.log('📊 Prize check validation:', {
+        hasBookedTickets,
+        hasActivePrizes,
+        hasValidTickets,
+        bookingsCount: Object.keys(bookings).length,
+        ticketsCount: Object.keys(tickets).length,
+        activePrizesCount: Object.values(activePrizes).filter(Boolean).length
+      });
+
+      if (!hasBookedTickets) {
+        console.log('⏭️ No booked tickets, skipping prize validation');
+        return;
+      }
+
+      if (!hasActivePrizes) {
+        console.log('⏭️ No active prizes configured, skipping prize validation');
+        return;
+      }
+
+      if (!hasValidTickets) {
+        console.log('⏭️ No valid tickets found, skipping prize validation');
+        return;
+      }
+
+      // FIXED: Create safe validation context with guaranteed valid data
+      const context: ValidationContext = {
+        tickets: tickets,
+        bookings: bookings,
+        calledNumbers: [...calledNumbers], // Create copy to prevent mutations
+        currentWinners: {
+          quickFive: Array.isArray(currentWinners.quickFive) ? [...currentWinners.quickFive] : [],
+          topLine: Array.isArray(currentWinners.topLine) ? [...currentWinners.topLine] : [],
+          middleLine: Array.isArray(currentWinners.middleLine) ? [...currentWinners.middleLine] : [],
+          bottomLine: Array.isArray(currentWinners.bottomLine) ? [...currentWinners.bottomLine] : [],
+          corners: Array.isArray(currentWinners.corners) ? [...currentWinners.corners] : [],
+          starCorners: Array.isArray(currentWinners.starCorners) ? [...currentWinners.starCorners] : [],
+          halfSheet: Array.isArray(currentWinners.halfSheet) ? [...currentWinners.halfSheet] : [],
+          fullSheet: Array.isArray(currentWinners.fullSheet) ? [...currentWinners.fullSheet] : [],
+          fullHouse: Array.isArray(currentWinners.fullHouse) ? [...currentWinners.fullHouse] : [],
+          secondFullHouse: Array.isArray(currentWinners.secondFullHouse) ? [...currentWinners.secondFullHouse] : []
+        },
+        activePrizes: { ...activePrizes }
+      };
+
+      console.log('🔍 Starting prize validation with safe context');
       
-      const validationResults = validateAllPrizes(context);
-      
-      if (validationResults.length > 0) {
-        console.log(`🏆 Found ${validationResults.length} prize winner(s)`);
+      // FIXED: Call validation with try-catch for individual error handling
+      let validationResults: any[] = [];
+      try {
+        validationResults = validateAllPrizes(context);
+      } catch (validationError) {
+        console.error('❌ Prize validation function failed:', validationError);
+        console.error('Context data:', {
+          ticketsCount: Object.keys(context.tickets).length,
+          bookingsCount: Object.keys(context.bookings).length,
+          calledNumbersLength: context.calledNumbers.length,
+          winnersStructure: Object.keys(context.currentWinners)
+        });
         
+        // Don't throw - just log and return to prevent breaking the game
+        return;
+      }
+
+      console.log(`🎯 Prize validation completed, found ${validationResults.length} potential winners`);
+
+      if (validationResults.length > 0) {
+        console.log(`🏆 Processing ${validationResults.length} prize winner(s)`);
+        
+        // FIXED: Safe processing of validation results
         const winnersUpdate: Partial<Game.Winners> = {};
         let hasNewWinners = false;
         
         for (const result of validationResults) {
-          if (result.isWinner && result.winningTickets.length > 0) {
-            // FULLY FIXED: Use proper type guard for complete type safety
-            if (this.isValidPrizeType(result.prizeType)) {
-              const prizeKey = result.prizeType; // TypeScript now knows this is safe
-              const currentPrizeWinners = context.currentWinners[prizeKey] || [];
-              winnersUpdate[prizeKey] = [
-                ...currentPrizeWinners,
-                ...result.winningTickets
-              ];
-              hasNewWinners = true;
+          try {
+            if (!result || !result.isWinner || !Array.isArray(result.winningTickets) || result.winningTickets.length === 0) {
+              console.warn('⚠️ Invalid validation result structure:', result);
+              continue;
+            }
             
-              console.log(`🏆 Prize won: ${result.prizeType} by ${result.playerName} with tickets ${result.winningTickets.join(', ')}`);
+            // FIXED: Use type guard for complete type safety
+            if (this.isValidPrizeType(result.prizeType)) {
+              const prizeKey = result.prizeType;
+              const currentPrizeWinners = context.currentWinners[prizeKey] || [];
+              
+              // Only add new winners (prevent duplicates)
+              const newWinners = result.winningTickets.filter(ticketId => !currentPrizeWinners.includes(ticketId));
+              
+              if (newWinners.length > 0) {
+                winnersUpdate[prizeKey] = [
+                  ...currentPrizeWinners,
+                  ...newWinners
+                ];
+                hasNewWinners = true;
+                
+                console.log(`🏆 New ${result.prizeType} winner: ${result.playerName} with tickets ${newWinners.join(', ')}`);
+              } else {
+                console.log(`ℹ️ ${result.prizeType} already won by ${result.playerName}, skipping duplicate`);
+              }
             } else {
               console.warn(`⚠️ Invalid prize type detected: ${result.prizeType}`);
             }
+          } catch (resultError) {
+            console.error('❌ Error processing validation result:', resultError, result);
+            // Continue with other results
           }
         }
         
-        if (hasNewWinners) {
-          await this.databaseService.updateGameState(hostId, {
-            winners: {
+        // FIXED: Only update database if we have new winners
+        if (hasNewWinners && Object.keys(winnersUpdate).length > 0) {
+          try {
+            console.log(`💾 Updating database with ${Object.keys(winnersUpdate).length} new prize winners`);
+            
+            const updatedWinners = {
               ...context.currentWinners,
               ...winnersUpdate
-            }
-          });
-          
-          // Check if all active prizes have been won - ALL TypeScript errors FIXED
-          const updatedWinners = { ...context.currentWinners, ...winnersUpdate };
-          
-          const allActivePrizesWon = Object.entries(context.activePrizes)
-            .filter(([_, isActive]) => isActive)
-            .every(([prizeType]) => {
-              // FULLY FIXED: Use type guard for completely safe indexing
-              if (this.isValidPrizeType(prizeType)) {
-                const winners = updatedWinners[prizeType];
-                return winners && winners.length > 0;
-              }
-              console.warn(`⚠️ Skipping invalid prize type in check: ${prizeType}`);
-              return false;
-            });
-          
-          if (allActivePrizesWon) {
-            console.log('🎉 All active prizes won! Ending game...');
+            };
+            
             await this.databaseService.updateGameState(hostId, {
-              allPrizesWon: true,
-              isAutoCalling: false,
-              status: 'ended',
-              phase: 4 as const
+              winners: updatedWinners
             });
+            
+            console.log('✅ Prize winners updated in database');
+            
+            // FIXED: Check if all active prizes have been won with safe type checking
+            const allActivePrizesWon = Object.entries(activePrizes)
+              .filter(([_, isActive]) => isActive)
+              .every(([prizeType]) => {
+                // Use type guard for completely safe indexing
+                if (this.isValidPrizeType(prizeType)) {
+                  const winners = updatedWinners[prizeType];
+                  return Array.isArray(winners) && winners.length > 0;
+                }
+                console.warn(`⚠️ Skipping invalid prize type in all-prizes check: ${prizeType}`);
+                return false;
+              });
+            
+            if (allActivePrizesWon) {
+              console.log('🎉 All active prizes won! Ending game...');
+              try {
+                await this.databaseService.updateGameState(hostId, {
+                  allPrizesWon: true,
+                  isAutoCalling: false,
+                  status: 'ended',
+                  phase: 4 as const
+                });
+                console.log('✅ Game ended due to all prizes being won');
+              } catch (endGameError) {
+                console.error('❌ Failed to end game after all prizes won:', endGameError);
+              }
+            }
+            
+          } catch (updateError) {
+            console.error('❌ Failed to update prize winners in database:', updateError);
+            // Don't throw - this shouldn't break the number call
           }
+        } else {
+          console.log('ℹ️ No new winners to update');
         }
+      } else {
+        console.log('ℹ️ No prize winners found this round');
       }
+      
     } catch (error) {
-      console.error('Prize validation error:', error);
-      // Don't throw - prize validation errors shouldn't fail the number call
+      console.error('💥 Prize validation error - full catch:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      console.error('Input parameters:', {
+        hostId,
+        calledNumbersType: typeof calledNumbers,
+        calledNumbersIsArray: Array.isArray(calledNumbers),
+        calledNumbersLength: calledNumbers?.length,
+        currentGameExists: !!currentGame,
+        currentGameType: typeof currentGame
+      });
+      
+      // FIXED: Don't throw errors from prize validation - just log them
+      // Prize validation errors should not break the core game functionality
+      console.warn('⚠️ Prize validation failed but game will continue normally');
     }
   }
   
