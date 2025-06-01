@@ -70,13 +70,13 @@ function safeWinnersAccess(winners: Game.Winners | undefined | null): Game.Winne
 }
 
 // FIXED: Completely safe prize settings access with explicit boolean conversion
-function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | null): Game.Settings['prizes'] {
+function safePrizeSettingsAccess(prizes: any): Game.Settings['prizes'] {
   if (!prizes || typeof prizes !== 'object') {
     return { ...DEFAULT_PRIZE_SETTINGS };
   }
   
-  // FIXED: Direct property access with explicit boolean coercion
-  return {
+  // FIXED: Explicitly type the return object and convert each property to boolean
+  const result: Game.Settings['prizes'] = {
     quickFive: Boolean(prizes.quickFive),
     topLine: Boolean(prizes.topLine),
     middleLine: Boolean(prizes.middleLine),
@@ -88,6 +88,8 @@ function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | n
     fullHouse: Boolean(prizes.fullHouse),
     secondFullHouse: Boolean(prizes.secondFullHouse)
   };
+  
+  return result;
 }
 
 // FIXED: Safe ticket numbers access
