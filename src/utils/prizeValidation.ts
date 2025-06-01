@@ -75,26 +75,34 @@ function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | n
     return { ...DEFAULT_PRIZE_SETTINGS };
   }
   
-  // Helper function to safely convert any value to boolean
-  const toBoolean = (value: any): boolean => {
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'number') return value !== 0;
-    if (typeof value === 'string') return value !== '' && value !== 'false' && value !== '0';
-    return Boolean(value);
+  // FIXED: More explicit boolean conversion that TypeScript can understand
+  const ensureBoolean = (value: unknown): boolean => {
+    // Explicit type checking and conversion
+    if (value === true || value === false) {
+      return value as boolean;
+    }
+    if (typeof value === 'number') {
+      return value !== 0;
+    }
+    if (typeof value === 'string') {
+      return value !== '' && value !== 'false' && value !== '0';
+    }
+    // For any other type, convert to boolean explicitly
+    return value ? true : false;
   };
   
   // FIXED: Explicit boolean conversion for each property to prevent type errors
   return {
-    quickFive: toBoolean(prizes.quickFive),
-    topLine: toBoolean(prizes.topLine),
-    middleLine: toBoolean(prizes.middleLine),
-    bottomLine: toBoolean(prizes.bottomLine),
-    corners: toBoolean(prizes.corners),
-    starCorners: toBoolean(prizes.starCorners),
-    halfSheet: toBoolean(prizes.halfSheet),
-    fullSheet: toBoolean(prizes.fullSheet),
-    fullHouse: toBoolean(prizes.fullHouse),
-    secondFullHouse: toBoolean(prizes.secondFullHouse)
+    quickFive: ensureBoolean(prizes.quickFive),
+    topLine: ensureBoolean(prizes.topLine),
+    middleLine: ensureBoolean(prizes.middleLine),
+    bottomLine: ensureBoolean(prizes.bottomLine),
+    corners: ensureBoolean(prizes.corners),
+    starCorners: ensureBoolean(prizes.starCorners),
+    halfSheet: ensureBoolean(prizes.halfSheet),
+    fullSheet: ensureBoolean(prizes.fullSheet),
+    fullHouse: ensureBoolean(prizes.fullHouse),
+    secondFullHouse: ensureBoolean(prizes.secondFullHouse)
   };
 }
 
