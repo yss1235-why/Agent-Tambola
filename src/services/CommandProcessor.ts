@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - COMPLETE FILE with all fixes
+// src/services/CommandProcessor.ts - FIXED TypeScript compilation errors
 // Command processor that executes all commands and handles Firebase writes
 // This is the ONLY place where Firebase writes should happen
 
@@ -265,7 +265,7 @@ export class CommandProcessor {
     
     // Check if tickets are available
     const existingBookings = context.currentGame.activeTickets?.bookings || {};
-    const unavailableTickets = tickets.filter(ticketId => ticketId in existingBookings);
+    const unavailableTickets = tickets.filter((ticketId: string) => ticketId in existingBookings);
     
     if (unavailableTickets.length > 0) {
       return { isValid: false, error: `Tickets already booked: ${unavailableTickets.join(', ')}` };
@@ -792,7 +792,7 @@ export class CommandProcessor {
   }
   
   /**
-   * FULLY FIXED: Check for prizes after a number is called - NO MORE TypeError issues
+   * FIXED: Check for prizes after a number is called - NO MORE TypeError issues
    */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
     try {
@@ -906,8 +906,8 @@ export class CommandProcessor {
       if (validationResults.length > 0) {
         console.log(`🏆 Processing ${validationResults.length} prize winner(s)`);
         
-        // FIXED: Safe processing of validation results
-        const winnersUpdate: Partial<Game.Winners> = {};
+        // FIXED: Safe processing of validation results with proper type checking
+        const winnersUpdate: Record<string, string[]> = {};
         let hasNewWinners = false;
         
         for (const result of validationResults) {
@@ -917,16 +917,16 @@ export class CommandProcessor {
               continue;
             }
             
-            // FIXED: Use type guard for complete type safety
-            if (this.isValidPrizeType(result.prizeType)) {
-              const prizeKey = result.prizeType;
-              const currentPrizeWinners = context.currentWinners[prizeKey] || [];
+            // FIXED: Type-safe access to Winners properties
+            const prizeType = result.prizeType;
+            if (this.isValidPrizeType(prizeType)) {
+              const currentPrizeWinners = context.currentWinners[prizeType] || [];
               
               // Only add new winners (prevent duplicates)
-              const newWinners = result.winningTickets.filter(ticketId => !currentPrizeWinners.includes(ticketId));
+              const newWinners = result.winningTickets.filter((ticketId: string) => !currentPrizeWinners.includes(ticketId));
               
               if (newWinners.length > 0) {
-                winnersUpdate[prizeKey] = [
+                winnersUpdate[prizeType] = [
                   ...currentPrizeWinners,
                   ...newWinners
                 ];
