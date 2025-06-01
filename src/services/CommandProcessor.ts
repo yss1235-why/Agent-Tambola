@@ -708,7 +708,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Check for prizes after a number is called - FIXED type safety issue
+   * Check for prizes after a number is called - FIXED: Complete type safety
    */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
     try {
@@ -737,15 +737,19 @@ export class CommandProcessor {
         
         for (const result of validationResults) {
           if (result.isWinner && result.winningTickets.length > 0) {
-            // FIXED: Use proper type assertion to ensure type safety
+            // FIXED: Use proper type safety with key validation
             const prizeKey = result.prizeType as keyof Game.Winners;
-            winnersUpdate[prizeKey] = [
-              ...(context.currentWinners[prizeKey] || []),
-              ...result.winningTickets
-            ];
-            hasNewWinners = true;
             
-            console.log(`🏆 Prize won: ${result.prizeType} by ${result.playerName} with tickets ${result.winningTickets.join(', ')}`);
+            // Ensure the key is valid before using it
+            if (prizeKey in context.currentWinners) {
+              winnersUpdate[prizeKey] = [
+                ...(context.currentWinners[prizeKey] || []),
+                ...result.winningTickets
+              ];
+              hasNewWinners = true;
+            
+              console.log(`🏆 Prize won: ${result.prizeType} by ${result.playerName} with tickets ${result.winningTickets.join(', ')}`);
+            }
           }
         }
         
@@ -760,17 +764,13 @@ export class CommandProcessor {
           // Check if all active prizes have been won - FIXED: Proper type safety
           const updatedWinners = { ...context.currentWinners, ...winnersUpdate };
           
-          // Create a type-safe function to check if a prize type is valid
-          const isValidPrizeType = (prizeType: string): prizeType is keyof Game.Winners => {
-            return prizeType in updatedWinners;
-          };
-          
           const allActivePrizesWon = Object.entries(context.activePrizes)
             .filter(([_, isActive]) => isActive)
             .every(([prizeType]) => {
               // FIXED: Use type guard for safe indexing
-              if (isValidPrizeType(prizeType)) {
-                const winners = updatedWinners[prizeType];
+              if (prizeType in updatedWinners) {
+                const prizeKey = prizeType as keyof Game.Winners;
+                const winners = updatedWinners[prizeKey];
                 return winners && winners.length > 0;
               }
               return false;
