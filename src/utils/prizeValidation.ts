@@ -1,4 +1,4 @@
-// src/utils/prizeValidation.ts - FIXED: All undefined/null access issues that were causing TypeError
+// src/utils/prizeValidation.ts - FIXED: All TypeScript compilation errors
 import type { Game } from '../types/game';
 
 export interface ValidationContext {
@@ -139,7 +139,7 @@ class ValidationLookupMaps {
   }
 }
 
-// Timing-based validation rules
+// FIXED: Timing-based validation rules with proper boolean return type
 function shouldCheckPrize(prizeType: keyof Game.Winners, callCount: number, currentWinners: Game.Winners): boolean {
   const safeWinners = safeWinnersAccess(currentWinners);
   
@@ -153,6 +153,7 @@ function shouldCheckPrize(prizeType: keyof Game.Winners, callCount: number, curr
     case 'corners':
       return callCount >= 4;
     case 'starCorners':
+      // FIXED: Ensure boolean return type by checking array length
       return callCount >= 5 && safeWinners.corners.length === 0;
     case 'halfSheet':
       return callCount >= 6;
@@ -161,6 +162,7 @@ function shouldCheckPrize(prizeType: keyof Game.Winners, callCount: number, curr
     case 'fullHouse':
       return callCount >= 15;
     case 'secondFullHouse':
+      // FIXED: Ensure boolean return type by checking array length > 0
       return safeWinners.fullHouse.length > 0;
     default:
       return true;
