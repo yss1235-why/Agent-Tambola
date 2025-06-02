@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.tsx - FIXED: Proper profile structure and error handling
+// src/contexts/AuthContext.tsx - FIXED TypeScript compilation errors
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { 
   User, 
@@ -13,7 +13,6 @@ import { useNavigate } from 'react-router-dom';
 import { LoadingSpinner } from '@components';
 import { app, database } from '@lib/firebase';
 
-// FIXED: Proper HostProfile interface with optional fields
 interface HostProfile {
   email: string;
   lastLogin: number;
@@ -21,12 +20,6 @@ interface HostProfile {
   status: 'active' | 'inactive';
   subscriptionEnd: number;
   username: string;
-  // Optional profile fields
-  organization?: string;
-  contactNumber?: string;
-  address?: string;
-  createdAt?: number;
-  updatedAt?: number;
 }
 
 interface AuthState {
@@ -43,7 +36,6 @@ interface AuthContextType extends AuthState {
   clearError: () => void;
   updateProfile: (updates: Partial<HostProfile>) => Promise<void>;
   checkSubscriptionValidity: () => boolean;
-  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,60 +46,37 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-// FIXED: Robust data reading with proper error handling
-const readHostProfile = async (hostId: string): Promise<HostProfile | null> => {
+// FIXED: Simple Firebase utilities with proper generic syntax
+type ReadDataResult<T> = { success: boolean; data?: T; error?: string };
+
+const readData = async function<T>(hostId: string, path: string): Promise<ReadDataResult<T>> {
   try {
-    console.log('Reading host profile for:', hostId);
-    
-    const dataRef = ref(database, `hosts/${hostId}`);
+    const dataRef = ref(database, `hosts/${hostId}/${path}`);
     const snapshot = await get(dataRef);
     
     if (snapshot.exists()) {
-      const data = snapshot.val();
-      console.log('Host profile found:', data);
-      
-      // FIXED: Validate required fields and provide defaults
-      const hostProfile: HostProfile = {
-        email: data.email || '',
-        lastLogin: data.lastLogin || Date.now(),
-        role: data.role || 'host',
-        status: data.status || 'inactive',
-        subscriptionEnd: data.subscriptionEnd || 0,
-        username: data.username || data.email?.split('@')[0] || 'Host',
-        // Optional fields
-        organization: data.organization || '',
-        contactNumber: data.contactNumber || '',
-        address: data.address || '',
-        createdAt: data.createdAt || Date.now(),
-        updatedAt: data.updatedAt || Date.now()
-      };
-      
-      return hostProfile;
+      return { success: true, data: snapshot.val() as T };
     } else {
-      console.warn('No host profile found for:', hostId);
-      return null;
+      return { success: false, error: 'Data not found' };
     }
   } catch (error) {
-    console.error('Error reading host profile:', error);
-    throw new Error(error instanceof Error ? error.message : 'Failed to read profile');
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to read data' 
+    };
   }
 };
 
-const updateHostData = async (hostId: string, updates: Partial<HostProfile>): Promise<void> => {
+const updateData = async (hostId: string, updates: any): Promise<{ success: boolean; error?: string }> => {
   try {
-    console.log('Updating host data for:', hostId, updates);
-    
     const hostRef = ref(database, `hosts/${hostId}`);
-    const updateData = {
-      ...updates,
-      updatedAt: Date.now()
-    };
-    
-    await update(hostRef, updateData);
-    console.log('Host data updated successfully');
+    await update(hostRef, updates);
+    return { success: true };
   } catch (error) {
-    console.error('Error updating host data:', error);
-    throw new Error(error instanceof Error ? error.message : 'Failed to update profile');
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to update data' 
+    };
   }
 };
 
@@ -122,84 +91,52 @@ export function AuthProvider({ children }: AuthProviderProps) {
   });
 
   const checkSubscriptionValidity = (): boolean => {
-    if (!state.userProfile) {
-      console.log('No user profile available for subscription check');
-      return false;
-    }
+    if (!state.userProfile) return false;
     
     const isValid = state.userProfile.status === 'active' && 
                   state.userProfile.subscriptionEnd > Date.now();
     
-    console.log('Subscription validity check:', {
-      status: state.userProfile.status,
-      subscriptionEnd: state.userProfile.subscriptionEnd,
-      now: Date.now(),
-      isValid
-    });
-    
     return isValid;
   };
 
-  // FIXED: Load user profile with proper error handling
-  const loadUserProfile = async (user: User) => {
-    try {
-      console.log('Loading user profile for:', user.uid);
-      
-      const profile = await readHostProfile(user.uid);
-      
-      if (profile) {
-        const isValid = profile.status === 'active' && 
-                       profile.subscriptionEnd > Date.now();
-        
-        setState(prev => ({
-          ...prev,
-          currentUser: user,
-          userProfile: profile,
-          isSubscriptionValid: isValid,
-          isLoading: false,
-          error: null,
-        }));
-        
-        console.log('User profile loaded successfully:', {
-          username: profile.username,
-          status: profile.status,
-          subscriptionValid: isValid
-        });
-      } else {
-        // FIXED: Handle missing profile gracefully
-        console.warn('Host profile not found, user may need to be set up');
-        
-        setState(prev => ({
-          ...prev,
-          currentUser: user,
-          userProfile: null,
-          isSubscriptionValid: false,
-          isLoading: false,
-          error: 'Host profile not found. Please contact support.',
-        }));
-      }
-    } catch (error) {
-      console.error('Error loading user profile:', error);
-      setState(prev => ({
-        ...prev,
-        currentUser: user,
-        userProfile: null,
-        isSubscriptionValid: false,
-        isLoading: false,
-        error: 'Failed to load profile data',
-      }));
-    }
-  };
-
-  // FIXED: Auth state change handler with better error handling
   useEffect(() => {
-    console.log('Setting up auth state listener');
-    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log('Auth state changed:', user ? `User: ${user.email}` : 'No user');
-      
       if (user) {
-        await loadUserProfile(user);
+        try {
+          const result = await readData<HostProfile>(user.uid, '');
+          
+          if (result.success && result.data) {
+            const profile = result.data;
+            const isValid = profile.status === 'active' && 
+                          profile.subscriptionEnd > Date.now();
+            
+            setState(prev => ({
+              ...prev,
+              currentUser: user,
+              userProfile: profile,
+              isSubscriptionValid: isValid,
+              isLoading: false,
+              error: null,
+            }));
+          } else {
+            setState(prev => ({
+              ...prev,
+              currentUser: user,
+              userProfile: null,
+              isSubscriptionValid: false,
+              isLoading: false,
+              error: null,
+            }));
+          }
+        } catch (error) {
+          console.error('Error fetching host profile:', error);
+          setState(prev => ({
+            ...prev,
+            currentUser: user,
+            isLoading: false,
+            error: 'Error fetching host profile',
+          }));
+        }
       } else {
         setState(prev => ({
           ...prev,
@@ -212,48 +149,66 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     });
 
-    return () => {
-      console.log('Cleaning up auth state listener');
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
 
   const updateLastLogin = async (userId: string): Promise<void> => {
     try {
-      await updateHostData(userId, {
+      const result = await updateData(userId, {
         lastLogin: Date.now()
       });
-      console.log('Last login updated for:', userId);
+      
+      if (!result.success) {
+        console.error('Error updating last login:', result.error);
+      }
     } catch (error) {
       console.error('Error updating last login:', error);
-      // Don't throw here, it's not critical
     }
   };
 
   const signInHost = async (email: string, password: string): Promise<void> => {
     try {
-      console.log('Attempting to sign in host:', email);
-      
       setState(prev => ({ ...prev, error: null, isLoading: true }));
       
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      console.log('Firebase authentication successful');
       
-      // FIXED: Profile loading is now handled by the auth state change listener
-      // But we'll also update last login here
+      const profileResult = await readData<HostProfile>(
+        userCredential.user.uid, 
+        ''
+      );
+      
+      if (!profileResult.success || !profileResult.data) {
+        await firebaseSignOut(auth);
+        throw new Error('Host profile not found');
+      }
+      
+      const profile = profileResult.data;
+      const isValid = profile.status === 'active' && 
+                     profile.subscriptionEnd > Date.now();
+
       await updateLastLogin(userCredential.user.uid);
-      
-      // Navigation will be handled after profile loads in the auth state listener
-      
-    } catch (error) {
-      console.error('Host sign in error:', error);
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : 'An error occurred during sign in';
-      
+
       setState(prev => ({
         ...prev,
-        error: errorMessage,
+        currentUser: userCredential.user,
+        userProfile: profile,
+        isSubscriptionValid: isValid,
+        isLoading: false,
+        error: null,
+      }));
+
+      if (isValid) {
+        navigate('/dashboard');
+      } else {
+        navigate('/subscription');
+      }
+    } catch (error) {
+      console.error('Host sign in error:', error);
+      setState(prev => ({
+        ...prev,
+        error: error instanceof Error 
+          ? error.message 
+          : 'An error occurred during sign in',
         isLoading: false,
       }));
       throw error;
@@ -262,15 +217,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signOut = async (): Promise<void> => {
     try {
-      console.log('Signing out user');
       setState(prev => ({ ...prev, error: null, isLoading: true }));
-      
       await firebaseSignOut(auth);
-      
-      // State will be updated by the auth state change listener
       navigate('/login');
     } catch (error) {
-      console.error('Sign out error:', error);
       setState(prev => ({
         ...prev,
         error: error instanceof Error 
@@ -288,10 +238,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     try {
-      console.log('Updating profile:', updates);
-      setState(prev => ({ ...prev, isLoading: true, error: null }));
+      setState(prev => ({ ...prev, isLoading: true }));
       
-      await updateHostData(state.currentUser.uid, updates);
+      const result = await updateData(state.currentUser.uid, updates);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update profile');
+      }
 
       const newProfile = { ...state.userProfile, ...updates } as HostProfile;
       const isValid = newProfile.status === 'active' && 
@@ -304,10 +257,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isLoading: false,
         error: null,
       }));
-      
-      console.log('Profile updated successfully');
     } catch (error) {
-      console.error('Profile update error:', error);
       setState(prev => ({
         ...prev,
         error: error instanceof Error 
@@ -319,45 +269,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  // FIXED: Add refresh profile method
-  const refreshProfile = async (): Promise<void> => {
-    if (!state.currentUser) {
-      throw new Error('No authenticated user');
-    }
-
-    console.log('Refreshing profile data');
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-    
-    await loadUserProfile(state.currentUser);
-  };
-
   const clearError = () => {
     setState(prev => ({ ...prev, error: null }));
   };
 
-  // FIXED: Navigation logic based on subscription status
-  useEffect(() => {
-    if (state.currentUser && state.userProfile && !state.isLoading) {
-      console.log('Checking navigation for authenticated user');
-      
-      if (state.isSubscriptionValid) {
-        console.log('Subscription valid, navigating to dashboard');
-        navigate('/dashboard');
-      } else {
-        console.log('Subscription invalid, navigating to subscription page');
-        navigate('/subscription');
-      }
-    }
-  }, [state.currentUser, state.userProfile, state.isSubscriptionValid, state.isLoading, navigate]);
-
-  // FIXED: Better loading state with error handling
-  if (state.isLoading && !state.currentUser) {
+  if (state.isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <LoadingSpinner size="large" />
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
+        <LoadingSpinner size="large" />
       </div>
     );
   }
@@ -369,7 +288,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     clearError,
     updateProfile,
     checkSubscriptionValidity,
-    refreshProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
