@@ -1,10 +1,9 @@
 // src/types/commands.ts - FIXED all TypeScript compilation errors
 // Command type definitions for the Command Queue Pattern
-// This file defines all possible commands that can be sent through the queue
 
 import type { Game } from './game';
 
-// FIXED: Base command interface with proper structure
+// Base command interface with proper structure
 export interface BaseCommand {
   id: string;
   type: string;
@@ -12,7 +11,7 @@ export interface BaseCommand {
   hostId: string;
 }
 
-// FIXED: Individual command interfaces with proper inheritance
+// Individual command interfaces with proper inheritance
 export interface CallNumberCommand extends BaseCommand {
   type: 'CALL_NUMBER';
   payload: {
@@ -53,7 +52,7 @@ export interface UpdatePrizeWinnersCommand extends BaseCommand {
     ticketIds: string[];
     playerName: string;
     phoneNumber: string;
-    allPrizeTypes: string[]; // For multiple prizes
+    allPrizeTypes: string[];
   };
 }
 
@@ -80,7 +79,7 @@ export interface StartBookingPhaseCommand extends BaseCommand {
 
 export interface StartPlayingPhaseCommand extends BaseCommand {
   type: 'START_PLAYING_PHASE';
-  payload: Record<string, never>; // FIXED: Empty object type instead of {}
+  payload: Record<string, never>; // Empty object type
 }
 
 export interface CompleteGameCommand extends BaseCommand {
@@ -111,7 +110,7 @@ export interface CancelBookingCommand extends BaseCommand {
   };
 }
 
-// FIXED: Union type of all possible commands with proper discrimination
+// Union type of all possible commands with proper discrimination
 export type GameCommand = 
   | CallNumberCommand
   | UpdateGameStatusCommand
@@ -157,7 +156,7 @@ export enum CommandPriority {
   CRITICAL = 3
 }
 
-// FIXED: Priority command interface without conflicting inheritance
+// Priority command interface
 export interface PriorityCommand {
   command: GameCommand;
   priority: CommandPriority;
@@ -205,13 +204,13 @@ export interface CommandExecutionOptions {
   skipValidation?: boolean;
 }
 
-// FIXED: Helper type for creating commands without id, timestamp, and hostId
+// Helper type for creating commands without id, timestamp, and hostId
 export type CreateCommand<T extends GameCommand> = Omit<T, 'id' | 'timestamp' | 'hostId'>;
 
 // Helper type for command payloads
 export type CommandPayload<T extends GameCommand> = T['payload'];
 
-// FIXED: Command factory helper types with proper method signatures
+// Command factory helper types
 export interface CommandFactory {
   callNumber: (hostId: string, number: number) => CallNumberCommand;
   updateGameStatus: (hostId: string, status: 'active' | 'paused' | 'ended', isAutoCalling?: boolean) => UpdateGameStatusCommand;
@@ -234,7 +233,7 @@ export interface CommandHelpers {
   createCommandResult: (command: GameCommand, success: boolean, data?: any, error?: string) => CommandResult;
 }
 
-// FIXED: Type guards for command discrimination
+// Type guards for command discrimination
 export function isCallNumberCommand(command: GameCommand): command is CallNumberCommand {
   return command.type === 'CALL_NUMBER';
 }
@@ -287,7 +286,7 @@ export function isCancelBookingCommand(command: GameCommand): command is CancelB
   return command.type === 'CANCEL_BOOKING';
 }
 
-// Command factory implementation - FIXED with proper type annotations
+// Command factory implementation
 export const createCommandFactory = (generateId: () => string): CommandFactory => ({
   callNumber: (hostId: string, number: number): CallNumberCommand => ({
     id: generateId(),
