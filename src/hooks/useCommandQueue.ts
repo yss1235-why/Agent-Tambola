@@ -1,6 +1,4 @@
-// src/hooks/useCommandQueue.ts - React hook for sending commands through the queue system
-// This provides a clean interface for components to interact with the command system
-
+// src/hooks/useCommandQueue.ts - PROPER FIX: Immediate state synchronization
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { CommandQueue } from '../services/CommandQueue';
 import { GameCommand, CommandResult, CommandPriority, CommandError, CommandStats, CreateCommand } from '../types/commands';
@@ -25,9 +23,10 @@ interface UseCommandQueueReturn {
   updateSoundSettings: (soundEnabled: boolean) => string;
   cancelBooking: (ticketIds: string[]) => string;
   
-  // Queue state
+  // PROPER FIX: Immediate state tracking
   isProcessing: boolean;
   queueLength: number;
+  currentCommand: string | null;
   
   // Results and errors
   lastResult: CommandResult | null;
@@ -36,10 +35,8 @@ interface UseCommandQueueReturn {
   // Statistics
   stats: CommandStats;
   
-  // Utilities
-  clearQueue: () => number;
-  getQueueSnapshot: () => Array<{ type: string; priority: CommandPriority; timestamp: number; retryCount: number }>;
-  healthCheck: () => { healthy: boolean; issues: string[] };
+  // PROPER FIX: Health monitoring
+  systemHealth: { healthy: boolean; issues: string[] };
 }
 
 interface UseCommandQueueProps {
@@ -53,9 +50,10 @@ export function useCommandQueue({
   onResult,
   onError
 }: UseCommandQueueProps): UseCommandQueueReturn {
-  // State
+  // PROPER FIX: Immediate state tracking with refs for real-time updates
   const [isProcessing, setIsProcessing] = useState(false);
   const [queueLength, setQueueLength] = useState(0);
+  const [currentCommand, setCurrentCommand] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<CommandResult | null>(null);
   const [lastError, setLastError] = useState<CommandError | null>(null);
   const [stats, setStats] = useState<CommandStats>({
@@ -64,8 +62,12 @@ export function useCommandQueue({
     averageExecutionTime: 0,
     lastExecutionTime: 0
   });
+  const [systemHealth, setSystemHealth] = useState<{ healthy: boolean; issues: string[] }>({
+    healthy: true,
+    issues: []
+  });
   
-  // Refs
+  // PROPER FIX: Use refs to prevent stale closures
   const commandQueue = useRef(CommandQueue.getInstance());
   const onResultRef = useRef(onResult);
   const onErrorRef = useRef(onError);
@@ -76,49 +78,83 @@ export function useCommandQueue({
     onErrorRef.current = onError;
   }, [onResult, onError]);
   
-  // Subscribe to queue events
+  // PROPER FIX: Real-time state synchronization
+  const syncQueueState = useCallback(() => {
+    const queue = commandQueue.current;
+    const newIsProcessing = queue.isProcessing();
+    const newQueueLength = queue.getQueueLength();
+    const newCurrentCommand = queue.getCurrentCommand();
+    const newStats = queue.getStats();
+    const newHealth = queue.healthCheck();
+    
+    // PROPER FIX: Only update if values actually changed (prevent unnecessary re-renders)
+    setIsProcessing(prev => prev !== newIsProcessing ? newIsProcessing : prev);
+    setQueueLength(prev => prev !== newQueueLength ? newQueueLength : prev);
+    setCurrentCommand(prev => prev !== newCurrentCommand ? newCurrentCommand : prev);
+    setStats(prev => JSON.stringify(prev) !== JSON.stringify(newStats) ? newStats : prev);
+    setSystemHealth(prev => JSON.stringify(prev) !== JSON.stringify(newHealth) ? newHealth : prev);
+  }, []);
+  
+  // PROPER FIX: Subscribe to queue events with immediate state sync
   useEffect(() => {
     const queue = commandQueue.current;
     
-    // Subscribe to command results
+    // PROPER FIX: Enhanced result listener with immediate state update
     const unsubscribeResults = queue.addListener((result: CommandResult) => {
+      console.log(`🎯 Command result received: ${result.command.type}`, result);
+      
       setLastResult(result);
-      setIsProcessing(queue.isProcessing());
-      setQueueLength(queue.getQueueLength());
-      setStats(queue.getStats());
+      
+      // PROPER FIX: Immediately sync state after each result
+      syncQueueState();
       
       // Call external callback
-      onResultRef.current?.(result);
+      try {
+        onResultRef.current?.(result);
+      } catch (error) {
+        console.error('Error in onResult callback:', error);
+      }
     });
     
-    // Subscribe to command errors
+    // PROPER FIX: Enhanced error listener
     const unsubscribeErrors = queue.addErrorListener((error: CommandError) => {
+      console.error(`🚨 Command error received:`, error);
+      
       setLastError(error);
       
+      // PROPER FIX: Immediately sync state after error
+      syncQueueState();
+      
       // Call external callback
-      onErrorRef.current?.(error);
+      try {
+        onErrorRef.current?.(error);
+      } catch (err) {
+        console.error('Error in onError callback:', err);
+      }
     });
     
-    // Initial state sync
-    setIsProcessing(queue.isProcessing());
-    setQueueLength(queue.getQueueLength());
-    setStats(queue.getStats());
+    // PROPER FIX: Initial state sync
+    syncQueueState();
+    
+    // PROPER FIX: Periodic state sync to catch any missed updates
+    const syncInterval = setInterval(syncQueueState, 1000);
     
     return () => {
       unsubscribeResults();
       unsubscribeErrors();
+      clearInterval(syncInterval);
     };
-  }, []);
+  }, [syncQueueState]);
   
   /**
-   * Generate a unique command ID
+   * PROPER FIX: Generate unique command ID
    */
   const generateCommandId = useCallback((): string => {
-    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }, []);
   
   /**
-   * Send a generic command
+   * PROPER FIX: Send command with immediate UI feedback
    */
   const sendCommand = useCallback((
     command: CreateCommand<GameCommand>, 
@@ -131,73 +167,72 @@ export function useCommandQueue({
       hostId
     } as GameCommand;
     
+    console.log(`📤 Sending command: ${fullCommand.type}`, fullCommand);
+    
+    // PROPER FIX: Immediately update UI state before sending
+    setIsProcessing(true);
+    setQueueLength(prev => prev + 1);
+    setCurrentCommand(fullCommand.type);
+    
     const success = commandQueue.current.enqueue(fullCommand, priority);
     
-    if (success) {
-      // Update local state immediately for UI responsiveness
-      setQueueLength(prev => prev + 1);
-      setIsProcessing(true);
-      
-      return fullCommand.id;
-    } else {
-      throw new Error('Failed to enqueue command - queue may be full');
+    if (!success) {
+      // PROPER FIX: Reset state immediately if enqueue failed
+      console.error(`❌ Failed to enqueue command: ${fullCommand.type}`);
+      syncQueueState(); // Sync actual state
+      throw new Error(`Failed to enqueue command: ${fullCommand.type}`);
     }
-  }, [hostId, generateCommandId]);
+    
+    // PROPER FIX: Sync state immediately after successful enqueue
+    setTimeout(syncQueueState, 10);
+    
+    return fullCommand.id;
+  }, [hostId, generateCommandId, syncQueueState]);
   
-  /**
-   * Call a number in the game
-   */
+  // PROPER FIX: Specific command helpers with immediate feedback
   const callNumber = useCallback((number: number): string => {
+    console.log(`🎲 Calling number: ${number}`);
     return sendCommand({
       type: 'CALL_NUMBER',
       payload: { number }
     }, CommandPriority.HIGH);
   }, [sendCommand]);
   
-  /**
-   * Update game status (pause/resume/end)
-   */
   const updateGameStatus = useCallback((
     status: 'active' | 'paused' | 'ended', 
     isAutoCalling?: boolean
   ): string => {
+    console.log(`🎮 Updating game status: ${status}`);
     return sendCommand({
       type: 'UPDATE_GAME_STATUS',
       payload: { status, isAutoCalling }
     }, CommandPriority.CRITICAL);
   }, [sendCommand]);
   
-  /**
-   * Create a new booking
-   */
   const createBooking = useCallback((
     playerName: string, 
     phoneNumber: string, 
     tickets: string[]
   ): string => {
+    console.log(`🎫 Creating booking for ${playerName}: ${tickets.length} tickets`);
     return sendCommand({
       type: 'CREATE_BOOKING',
       payload: { playerName, phoneNumber, tickets }
     }, CommandPriority.HIGH);
   }, [sendCommand]);
   
-  /**
-   * Update an existing booking
-   */
   const updateBooking = useCallback((
     ticketId: string, 
     playerName?: string, 
     phoneNumber?: string
   ): string => {
+    console.log(`✏️ Updating booking: ${ticketId}`);
     return sendCommand({
       type: 'UPDATE_BOOKING',
       payload: { ticketId, playerName, phoneNumber }
     });
   }, [sendCommand]);
   
-  /**
-   * Update prize winners
-   */
   const updatePrizeWinners = useCallback((
     prizeType: keyof Game.Winners,
     ticketIds: string[],
@@ -205,121 +240,82 @@ export function useCommandQueue({
     phoneNumber: string,
     allPrizeTypes: string[]
   ): string => {
+    console.log(`🏆 Updating prize winners: ${prizeType} for ${playerName}`);
     return sendCommand({
       type: 'UPDATE_PRIZE_WINNERS',
       payload: { prizeType, ticketIds, playerName, phoneNumber, allPrizeTypes }
     }, CommandPriority.HIGH);
   }, [sendCommand]);
   
-  /**
-   * Update game settings
-   */
   const updateGameSettings = useCallback((settings: Partial<Game.Settings>): string => {
+    console.log(`⚙️ Updating game settings:`, settings);
     return sendCommand({
       type: 'UPDATE_GAME_SETTINGS',
       payload: settings
     });
   }, [sendCommand]);
   
-  /**
-   * Initialize a new game
-   */
   const initializeGame = useCallback((
     settings: Game.Settings, 
     tickets: Record<string, Game.Ticket> = {}
   ): string => {
+    console.log(`🎮 Initializing new game`);
     return sendCommand({
       type: 'INITIALIZE_GAME',
       payload: { settings, tickets }
     }, CommandPriority.HIGH);
   }, [sendCommand]);
   
-  /**
-   * Start the booking phase
-   */
   const startBookingPhase = useCallback((
     settings: Game.Settings, 
     tickets: Record<string, Game.Ticket>
   ): string => {
+    console.log(`🎫 Starting booking phase`);
     return sendCommand({
       type: 'START_BOOKING_PHASE',
       payload: { settings, tickets }
     }, CommandPriority.HIGH);
   }, [sendCommand]);
   
-  /**
-   * Start the playing phase
-   */
   const startPlayingPhase = useCallback((): string => {
+    console.log(`🎯 Starting playing phase`);
     return sendCommand({
       type: 'START_PLAYING_PHASE',
       payload: {}
     }, CommandPriority.HIGH);
   }, [sendCommand]);
   
-  /**
-   * Complete the game
-   */
   const completeGame = useCallback((reason?: string): string => {
+    console.log(`🏁 Completing game: ${reason || 'Manual completion'}`);
     return sendCommand({
       type: 'COMPLETE_GAME',
       payload: { reason }
     }, CommandPriority.CRITICAL);
   }, [sendCommand]);
   
-  /**
-   * Update call delay
-   */
   const updateCallDelay = useCallback((callDelay: number): string => {
+    console.log(`⏱️ Updating call delay: ${callDelay}s`);
     return sendCommand({
       type: 'UPDATE_CALL_DELAY',
       payload: { callDelay }
     });
   }, [sendCommand]);
   
-  /**
-   * Update sound settings
-   */
   const updateSoundSettings = useCallback((soundEnabled: boolean): string => {
+    console.log(`🔊 Updating sound settings: ${soundEnabled ? 'enabled' : 'disabled'}`);
     return sendCommand({
       type: 'UPDATE_SOUND_SETTINGS',
       payload: { soundEnabled }
     });
   }, [sendCommand]);
   
-  /**
-   * Cancel booking(s)
-   */
   const cancelBooking = useCallback((ticketIds: string[]): string => {
+    console.log(`❌ Canceling bookings: ${ticketIds.join(', ')}`);
     return sendCommand({
       type: 'CANCEL_BOOKING',
       payload: { ticketIds }
     }, CommandPriority.HIGH);
   }, [sendCommand]);
-  
-  /**
-   * Clear the queue (emergency use)
-   */
-  const clearQueue = useCallback((): number => {
-    const clearedCount = commandQueue.current.clearQueue();
-    setQueueLength(0);
-    setIsProcessing(false);
-    return clearedCount;
-  }, []);
-  
-  /**
-   * Get queue snapshot for debugging
-   */
-  const getQueueSnapshot = useCallback(() => {
-    return commandQueue.current.getQueueSnapshot();
-  }, []);
-  
-  /**
-   * Perform health check
-   */
-  const healthCheck = useCallback(() => {
-    return commandQueue.current.healthCheck();
-  }, []);
   
   return {
     // Core command sending
@@ -340,21 +336,18 @@ export function useCommandQueue({
     updateSoundSettings,
     cancelBooking,
     
-    // Queue state
+    // PROPER FIX: Real-time state
     isProcessing,
     queueLength,
+    currentCommand,
     
     // Results and errors
     lastResult,
     lastError,
     
-    // Statistics
+    // Statistics and health
     stats,
-    
-    // Utilities
-    clearQueue,
-    getQueueSnapshot,
-    healthCheck
+    systemHealth
   };
 }
 
