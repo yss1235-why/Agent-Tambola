@@ -1,5 +1,5 @@
-// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - CLEAN VERSION
-// Removed all instructional content
+// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - UPDATED
+// Added default settings loading and saving for host phone persistence
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +12,7 @@ import GameParameters from './components/GameParameters';
 import { Game } from '../../../../types/game';
 import { AlertTriangle, Save, ChevronRight, Phone } from 'lucide-react';
 import { loadTicketData, validateTicketData } from '../../../../utils/ticketLoader';
+import { GameDatabaseService } from '../../../../services/GameDatabaseService'; // NEW: Import for default settings
 
 interface GameSetupProps {
   currentGame: Game.CurrentGame;
@@ -29,17 +30,80 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
   
   const [settings, setSettings] = useState<Game.Settings>(currentGame.settings);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingDefaults, setIsLoadingDefaults] = useState(true); // NEW: Loading state for defaults
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info');
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
 
+  // NEW: Load default settings on component mount
   useEffect(() => {
-    if (currentGame?.settings) {
-      setSettings(currentGame.settings);
+    const loadDefaultSettings = async () => {
+      if (!currentUser?.uid) return;
+      
+      try {
+        setIsLoadingDefaults(true);
+        
+        const dbService = GameDatabaseService.getInstance();
+        const defaultSettings = await dbService.getDefaultSettings(currentUser.uid);
+        
+        if (defaultSettings) {
+          console.log('📁 Loaded default settings:', {
+            hostPhone: defaultSettings.hostPhone ? 'Found' : 'Not found',
+            callDelay: defaultSettings.callDelay,
+            selectedTicketSet: defaultSettings.selectedTicketSet
+          });
+          
+          // Merge default settings with current game settings
+          // Current game settings take priority, but use defaults for missing values
+          const mergedSettings: Game.Settings = {
+            ...defaultSettings,
+            ...currentGame.settings,
+            // Specifically preserve hostPhone from defaults if current game doesn't have it
+            hostPhone: currentGame.settings.hostPhone || defaultSettings.hostPhone || '+91'
+          };
+          
+          setSettings(mergedSettings);
+          
+          // Show toast if we loaded a saved phone number
+          if (defaultSettings.hostPhone && defaultSettings.hostPhone !== '+91') {
+            setToastMessage(`Host phone auto-populated: ${defaultSettings.hostPhone}`);
+            setToastType('info');
+            setShowToast(true);
+          }
+        } else {
+          // No default settings found, use current game settings
+          console.log('📁 No default settings found, using current game settings');
+          setSettings(currentGame.settings);
+        }
+      } catch (error) {
+        console.error('❌ Error loading default settings:', error);
+        // Fallback to current game settings
+        setSettings(currentGame.settings);
+      } finally {
+        setIsLoadingDefaults(false);
+      }
+    };
+    
+    loadDefaultSettings();
+  }, [currentUser?.uid, currentGame.settings]);
+
+  // Update settings when current game changes (but don't override loaded defaults)
+  useEffect(() => {
+    if (currentGame?.settings && !isLoadingDefaults) {
+      setSettings(prev => ({
+        ...prev,
+        // Update non-personal settings but preserve hostPhone if already set
+        maxTickets: currentGame.settings.maxTickets,
+        selectedTicketSet: currentGame.settings.selectedTicketSet,
+        callDelay: currentGame.settings.callDelay,
+        prizes: currentGame.settings.prizes,
+        // Only update hostPhone if current one is empty/default
+        hostPhone: prev.hostPhone && prev.hostPhone !== '+91' ? prev.hostPhone : currentGame.settings.hostPhone
+      }));
     }
-  }, [currentGame]);
+  }, [currentGame, isLoadingDefaults]);
 
   const handleSettingsUpdate = (updates: Partial<Game.Settings>) => {
     setSettings(prev => ({
@@ -96,6 +160,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     return errors.length === 0;
   };
 
+  // NEW: Save both current game settings AND default settings
   const saveSettings = async () => {
     if (!currentUser?.uid) return;
     
@@ -111,10 +176,20 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     try {
       console.log('💾 Saving settings with command');
       
+      // Save current game settings
       const commandId = updateGameSettings(settings);
       console.log(`📤 Update settings command sent: ${commandId}`);
       
-      setToastMessage('Settings saved successfully');
+      // ALSO save as default settings for future games
+      try {
+        const dbService = GameDatabaseService.getInstance();
+        await dbService.saveDefaultSettings(currentUser.uid, settings);
+        console.log('💾 Default settings saved for future games');
+      } catch (defaultError) {
+        console.warn('⚠️ Failed to save default settings (non-critical):', defaultError);
+      }
+      
+      setToastMessage('Settings saved successfully and will be remembered for future games');
       setToastType('success');
       setShowToast(true);
       setHasMadeChanges(false);
@@ -143,6 +218,15 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     
     try {
       console.log('🎫 Starting booking phase with command');
+      
+      // First, save current settings as defaults for future games
+      try {
+        const dbService = GameDatabaseService.getInstance();
+        await dbService.saveDefaultSettings(currentUser.uid, settings);
+        console.log('💾 Settings saved as defaults for future games');
+      } catch (defaultError) {
+        console.warn('⚠️ Failed to save default settings (non-critical):', defaultError);
+      }
       
       console.log('Loading ticket data...');
       const ticketData = await loadTicketData(
@@ -187,6 +271,18 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     }
   };
 
+  // Show loading state while loading defaults
+  if (isLoadingDefaults) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <LoadingSpinner size="large" />
+          <p className="mt-4 text-gray-600">Loading saved settings...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-sm border p-6">
@@ -194,6 +290,12 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
           <div>
             <h2 className="text-2xl font-semibold text-gray-900">Game Setup</h2>
             <p className="text-gray-600 mt-1">Configure game settings before starting</p>
+            {/* NEW: Show if settings were auto-loaded */}
+            {settings.hostPhone && settings.hostPhone !== '+91' && (
+              <p className="text-sm text-blue-600 mt-1">
+                📱 Host phone auto-populated from previous game
+              </p>
+            )}
           </div>
           
           <div className="flex items-center space-x-3">
@@ -218,7 +320,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                 }`}
             >
               <Save className="w-4 h-4 mr-1" />
-              {isSubmitting ? 'Saving...' : 'Save Settings'}
+              {isSubmitting ? 'Saving...' : 'Save & Remember Settings'}
             </button>
           </div>
         </div>
@@ -261,6 +363,10 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                 className="block text-sm font-medium text-gray-700"
               >
                 Host Phone Number
+                {/* NEW: Indicate if auto-populated */}
+                {settings.hostPhone && settings.hostPhone !== '+91' && (
+                  <span className="text-blue-600 text-xs ml-2">(auto-populated)</span>
+                )}
               </label>
               <div className="mt-1 sm:mt-2 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -285,6 +391,9 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                   placeholder="+91 9876543210"
                 />
               </div>
+              <p className="mt-1 text-xs text-gray-500">
+                This will be saved and automatically filled for future games
+              </p>
             </div>
           </div>
           
