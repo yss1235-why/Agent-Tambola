@@ -1,5 +1,5 @@
-// src/utils/prizeValidation.ts - FIXED: Removed @ts-nocheck and fixed all TypeScript errors
-// Complete TypeScript-compliant version with proper type safety
+// src/utils/prizeValidation.ts - FIXED: Prize name to key mapping bug
+// This fixes the issue where prizes are detected but not saved
 
 import type { Game } from '../types/game';
 
@@ -30,6 +30,42 @@ function isPrizeKey(key: string): key is PrizeKey {
     'starCorners', 'halfSheet', 'fullSheet', 'fullHouse', 'secondFullHouse'
   ];
   return validKeys.includes(key as PrizeKey);
+}
+
+// 🔥 NEW: Prize name to key mapping function - FIXES THE MAIN BUG
+function prizeNameToKey(prizeName: string): PrizeKey | null {
+  const nameToKeyMap: Record<string, PrizeKey> = {
+    'Quick Five': 'quickFive',
+    'Top Line': 'topLine', 
+    'Middle Line': 'middleLine',
+    'Bottom Line': 'bottomLine',
+    'Corners': 'corners',
+    'Star Corners': 'starCorners',
+    'Half Sheet': 'halfSheet',
+    'Full Sheet': 'fullSheet',
+    'Full House': 'fullHouse',
+    'Second Full House': 'secondFullHouse'
+  };
+  
+  return nameToKeyMap[prizeName] || null;
+}
+
+// 🔥 NEW: Key to display name mapping function
+function keyToPrizeName(key: PrizeKey): string {
+  const keyToNameMap: Record<PrizeKey, string> = {
+    'quickFive': 'Quick Five',
+    'topLine': 'Top Line',
+    'middleLine': 'Middle Line', 
+    'bottomLine': 'Bottom Line',
+    'corners': 'Corners',
+    'starCorners': 'Star Corners',
+    'halfSheet': 'Half Sheet',
+    'fullSheet': 'Full Sheet',
+    'fullHouse': 'Full House',
+    'secondFullHouse': 'Second Full House'
+  };
+  
+  return keyToNameMap[key] || key;
 }
 
 // FIXED: Safe array access with proper type guards
@@ -398,7 +434,7 @@ function validateFullSheet(
   return [];
 }
 
-// FIXED: Main validation function with complete TypeScript compliance
+// 🔥 MAIN FIX: Complete TypeScript compliance with FIXED prize name mapping
 export function validateAllPrizes(context: ValidationContext): PrizeValidationResult[] {
   try {
     // FIXED: Safe access to all context properties with proper defaults
@@ -468,7 +504,7 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
         const ticket = tickets[ticketId];
         if (!ticket) continue;
         
-        // FIXED: Type-safe prize checking with proper key validation
+        // 🔥 FIXED: Type-safe prize checking with proper display names
         const prizeChecks: Array<{ key: PrizeKey; validator: (ticket: Game.Ticket, numbers: number[]) => boolean; name: string }> = [
           { key: 'quickFive', validator: validateQuickFive, name: 'Quick Five' },
           { key: 'topLine', validator: validateTopLine, name: 'Top Line' },
@@ -539,21 +575,25 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
         }
       }
       
-      // If player won any prizes, add to results
+      // 🔥 CRITICAL FIX: If player won any prizes, add to results with proper key mapping
       if (wonPrizes.length > 0) {
-        // FIXED: Proper type conversion for prizeType
-        const firstPrize = wonPrizes[0].toLowerCase().replace(/\s+/g, '');
-        if (isPrizeKey(firstPrize)) {
+        // 🔥 FIXED: Use the new prizeNameToKey function instead of broken string manipulation
+        const firstPrizeName = wonPrizes[0];
+        const prizeKey = prizeNameToKey(firstPrizeName);
+        
+        if (prizeKey) {
           results.push({
             isWinner: true,
             winningTickets: [mainTicketId],
-            prizeType: firstPrize,
+            prizeType: prizeKey, // 🔥 Now correctly mapped!
             playerName: booking.playerName,
             phoneNumber: booking.phoneNumber,
             allPrizeTypes: wonPrizes
           });
           
           console.log(`✅ Prize validation complete for ${booking.playerName}: ${wonPrizes.join(', ')}`);
+        } else {
+          console.error(`❌ Failed to map prize name "${firstPrizeName}" to valid key`);
         }
       }
     }
