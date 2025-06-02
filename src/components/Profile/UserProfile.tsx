@@ -1,8 +1,10 @@
 // src/components/Profile/UserProfile.tsx - FIXED: Proper data reading and structure
+// 🔄 ADDED: Two-way phone number synchronization with Game Setup
 import React, { useState, useEffect } from 'react';
 import { updateEmail, updatePassword, reauthenticateWithCredential, 
   EmailAuthProvider } from 'firebase/auth';
 import { useAuth } from '@contexts';
+import { useGame } from '@contexts'; // 🔄 Added for phone number sync
 import { LoadingSpinner } from '@components';
 import { ref, get, update } from 'firebase/database';
 import { database } from '../../lib/firebase';
@@ -119,6 +121,7 @@ const mapProfileDataToHostProfile = (profileData: Partial<ProfileData>): Partial
 
 export const UserProfile: React.FC = () => {
   const { currentUser } = useAuth();
+  const { currentGame, updateGameSettings } = useGame(); // 🔄 Added for phone number sync
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -131,6 +134,28 @@ export const UserProfile: React.FC = () => {
   useEffect(() => {
     loadProfileData();
   }, [currentUser]);
+
+  // 🔄 SYNC: Auto-populate contactNumber from game hostPhone if empty
+  useEffect(() => {
+    if (currentGame?.settings?.hostPhone && 
+        profileData && 
+        (!profileData.contactNumber || profileData.contactNumber === '')) {
+      console.log('🔄 Auto-populating contactNumber from game hostPhone:', currentGame.settings.hostPhone);
+      const updatedProfileData = {
+        ...profileData,
+        contactNumber: currentGame.settings.hostPhone
+      };
+      setProfileData(updatedProfileData);
+      setEditData(updatedProfileData);
+      
+      // Also update the database to persist this sync
+      if (currentUser?.uid) {
+        updateHostProfile(currentUser.uid, { contactNumber: currentGame.settings.hostPhone })
+          .then(() => console.log('✅ Profile contactNumber synced and saved'))
+          .catch(error => console.warn('⚠️ Failed to save synced contactNumber:', error));
+      }
+    }
+  }, [currentGame?.settings?.hostPhone, profileData?.contactNumber, currentUser?.uid]);
 
   const loadProfileData = async () => {
     if (!currentUser?.uid) {
@@ -210,6 +235,20 @@ export const UserProfile: React.FC = () => {
       // FIXED: Update local state immediately
       const updatedProfile = { ...profileData, ...editData } as ProfileData;
       setProfileData(updatedProfile);
+      
+      // 🔄 SYNC: If contactNumber changed, update game settings hostPhone
+      if (editData.contactNumber && 
+          editData.contactNumber !== profileData?.contactNumber && 
+          currentGame) {
+        try {
+          console.log('🔄 Syncing contactNumber to game hostPhone:', editData.contactNumber);
+          const commandId = updateGameSettings({ hostPhone: editData.contactNumber });
+          console.log('✅ Game hostPhone updated successfully, command:', commandId);
+        } catch (syncError) {
+          console.warn('⚠️ Failed to sync phone to game settings (non-critical):', syncError);
+          // Don't fail the main operation for sync errors
+        }
+      }
       
       setIsEditing(false);
       setSuccessMessage('Profile updated successfully');
@@ -441,6 +480,13 @@ export const UserProfile: React.FC = () => {
                   focus:border-blue-500 focus:ring-blue-500 sm:text-sm
                   disabled:bg-gray-100 disabled:text-gray-500"
               />
+              {/* 🔄 Sync indicator */}
+              {currentGame?.settings?.hostPhone && 
+               profileData?.contactNumber === currentGame.settings.hostPhone && (
+                <p className="mt-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200 inline-block">
+                  🎮 Synced with game settings
+                </p>
+              )}
             </div>
 
             <div>
