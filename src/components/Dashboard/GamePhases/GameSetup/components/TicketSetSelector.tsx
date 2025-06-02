@@ -1,7 +1,9 @@
-// src/components/Dashboard/GamePhases/GameSetup/components/TicketSetSelector.tsx
+// src/components/Dashboard/GamePhases/GameSetup/components/TicketSetSelector.tsx - CLEAN VERSION
+// Removed all instructional content
+
 import { useState, useEffect } from 'react';
 import { Game } from '../../../../../types/game';
-import { AlertTriangle, HelpCircle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
 interface TicketSetSelectorProps {
   selectedSet: number;
@@ -12,7 +14,6 @@ interface TicketSetSelectorProps {
 function TicketSetSelector({ selectedSet, maxTickets, onUpdate }: TicketSetSelectorProps) {
   const [error, setError] = useState<string | null>(null);
   const [localMaxTickets, setLocalMaxTickets] = useState<number>(maxTickets);
-  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     setLocalMaxTickets(maxTickets);
@@ -47,7 +48,6 @@ function TicketSetSelector({ selectedSet, maxTickets, onUpdate }: TicketSetSelec
     onUpdate({ maxTickets: numValue });
   };
 
-  // Validate and update when input loses focus
   const handleBlur = () => {
     if (localMaxTickets === 0) {
       setLocalMaxTickets(1);
@@ -55,43 +55,14 @@ function TicketSetSelector({ selectedSet, maxTickets, onUpdate }: TicketSetSelec
     }
   };
 
-  // Recommended ticket counts based on player count
-  const recommendedTickets = [
-    { players: 'Up to 10 players', count: 30 },
-    { players: '10-25 players', count: 90 },
-    { players: '25-50 players', count: 180 },
-    { players: '50+ players', count: 300 }
-  ];
-
   return (
     <section className="bg-white rounded-lg p-6 shadow-sm border">
-      <div className="flex justify-between items-start">
-        <div>
-          <h3 className="text-lg font-medium text-gray-900">Ticket Set Selection</h3>
-          <p className="text-gray-500 text-sm mt-1">
-            Choose a ticket set and set the maximum number of tickets
-          </p>
-        </div>
-        <button
-          onClick={() => setShowHelp(!showHelp)}
-          className="p-1 text-gray-400 hover:text-gray-600"
-          aria-label="Toggle help"
-        >
-          <HelpCircle className="w-5 h-5" />
-        </button>
+      <div>
+        <h3 className="text-lg font-medium text-gray-900">Ticket Set Selection</h3>
+        <p className="text-gray-500 text-sm mt-1">
+          Choose a ticket set and set the maximum number of tickets
+        </p>
       </div>
-
-      {showHelp && (
-        <div className="mt-4 bg-blue-50 border border-blue-100 rounded-md p-3 text-sm text-blue-800">
-          <p className="font-medium mb-2">Ticket Set Information:</p>
-          <ul className="list-disc pl-5 space-y-1">
-            <li>Each set contains up to 600 unique tickets</li>
-            <li>Set 1 & 2 have standard distributions of numbers</li>
-            <li>Set 3 & 4 have more varied distributions for experienced players</li>
-            <li>The "Maximum Tickets" setting limits how many tickets will be used from the selected set</li>
-          </ul>
-        </div>
-      )}
 
       <div className="mt-6 space-y-4">
         <div className="grid grid-cols-2 gap-2 sm:gap-4">
@@ -159,27 +130,6 @@ function TicketSetSelector({ selectedSet, maxTickets, onUpdate }: TicketSetSelec
               Maximum allowed: 600 tickets
             </p>
           )}
-        </div>
-
-        <div className="mt-4 border border-gray-100 rounded-md p-3 bg-gray-50">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Recommended Settings</h4>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            {recommendedTickets.map(rec => (
-              <div key={rec.players} className="flex justify-between">
-                <span className="text-gray-600">{rec.players}:</span>
-                <button
-                  onClick={() => {
-                    setLocalMaxTickets(rec.count);
-                    onUpdate({ maxTickets: rec.count });
-                    setError(null);
-                  }}
-                  className="text-blue-600 hover:text-blue-800"
-                >
-                  {rec.count} tickets
-                </button>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </section>
