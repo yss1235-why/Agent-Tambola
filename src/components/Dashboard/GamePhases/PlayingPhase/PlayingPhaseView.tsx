@@ -1,4 +1,6 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhaseView.tsx
+// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhaseView.tsx - CLEAN VERSION
+// Removed instructional content
+
 import { useState, useEffect } from 'react';
 import { AlertCircle, Award, Check, Trophy } from 'lucide-react'; 
 import { GameControls, LoadingSpinner, Toast } from '@components';
@@ -6,7 +8,6 @@ import NumberBoard from './components/NumberBoard';
 import WinnerDisplay from './components/WinnerDisplay';
 import { Game } from '../../../../types/game';
 
-// Default prizes configuration
 const DEFAULT_PRIZES: Game.Settings['prizes'] = {
   quickFive: false,
   topLine: false,
@@ -20,7 +21,6 @@ const DEFAULT_PRIZES: Game.Settings['prizes'] = {
   secondFullHouse: false,
 };
 
-// Default complete settings
 const DEFAULT_SETTINGS: Game.Settings = {
   maxTickets: 0,
   selectedTicketSet: 1,
@@ -75,24 +75,20 @@ function PlayingPhaseView({
     averageSpeed: 0 
   });
 
-  // Safely extract values from currentGame with fallbacks
   const activeTickets = currentGame?.activeTickets || { tickets: {}, bookings: {} };
   const settings = currentGame?.settings || DEFAULT_SETTINGS;
   const gameState = currentGame?.gameState || { status: 'paused' };
   const numberSystem = currentGame?.numberSystem || { callDelay: 5, calledNumbers: [], queue: [], currentNumber: null };
   
-  // Check for active prize configuration
   const hasActivePrizes = settings?.prizes ? Object.values(settings.prizes).some(isActive => isActive) : false;
   const hasBookedTickets = Object.keys(activeTickets?.bookings || {}).length > 0;
 
   useEffect(() => {
-    // Calculate game statistics
     if (currentGame) {
       const calledCount = numberSystem?.calledNumbers?.length || 0;
-      const totalNumbers = 90; // Standard tambola has 90 numbers
+      const totalNumbers = 90;
       const ticketCount = Object.keys(activeTickets?.bookings || {}).length;
       
-      // Calculate average speed (seconds per number call)
       const startTime = currentGame.startTime || Date.now();
       const currentTime = Date.now();
       const gameTimeSeconds = Math.max(1, (currentTime - startTime) / 1000);
@@ -107,7 +103,6 @@ function PlayingPhaseView({
     }
   }, [currentGame, numberSystem, activeTickets]);
 
-  // Show all prizes won toast when condition is met
   useEffect(() => {
     if (allPrizesWon && !isGameComplete) {
       setToastMessage('All prizes have been won! Game is ending automatically.');
@@ -116,7 +111,6 @@ function PlayingPhaseView({
     }
   }, [allPrizesWon, isGameComplete]);
 
-  // Show warning toast if no prizes configured or no tickets booked
   useEffect(() => {
     if (currentGame && !isGameComplete && !allPrizesWon) {
       if (!hasActivePrizes) {
@@ -131,15 +125,12 @@ function PlayingPhaseView({
     }
   }, [currentGame, hasActivePrizes, hasBookedTickets, isGameComplete, allPrizesWon]);
 
-  // Check for new winners
   useEffect(() => {
     if (!winners) return;
     
-    // Count total winners across all prize types
     const currentWinnerCount = Object.values(winners).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0);
     
     if (currentWinnerCount > lastWinnerCount && lastWinnerCount > 0) {
-      // New winner detected!
       setToastMessage('New prize claimed! 🎉');
       setToastType('success');
       setShowToast(true);
@@ -149,7 +140,6 @@ function PlayingPhaseView({
   }, [winners, lastWinnerCount]);
 
   const handleWinnerNotification = (prizeType: string, playerName: string) => {
-    // Handle both single and multiple prize notifications
     const message = prizeType.includes('+') 
       ? `${playerName} won multiple prizes: ${prizeType}! 🏆`
       : `${playerName} won ${prizeType}! 🏆`;
@@ -167,7 +157,6 @@ function PlayingPhaseView({
     );
   }
 
-  // Determine if all enabled prizes have winners
   const enabledPrizes = Object.entries(settings.prizes || {})
     .filter(([_, isEnabled]) => isEnabled)
     .map(([prizeType]) => prizeType as keyof Game.Winners);
@@ -177,14 +166,10 @@ function PlayingPhaseView({
     winners[prize] && winners[prize].length > 0
   ).length;
 
-  const allEnabledPrizesWon = enabledPrizesCount > 0 && wonPrizesCount === enabledPrizesCount;
-
-  // Determine game status based on gameState
   const gameStatus = gameState?.status === 'active' || gameState?.status === 'paused' 
     ? gameState.status 
     : 'paused';
 
-  // Render game completed view for either isGameComplete or allPrizesWon
   if (isGameComplete || allPrizesWon) {
     return (
       <div className="bg-white rounded-lg shadow-sm border p-6">
@@ -246,7 +231,6 @@ function PlayingPhaseView({
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Error Display */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
           <div className="flex items-center justify-between">
@@ -266,7 +250,6 @@ function PlayingPhaseView({
         </div>
       )}
 
-      {/* Prize Configuration Warning */}
       {!hasActivePrizes && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
           <div className="flex">
@@ -283,7 +266,6 @@ function PlayingPhaseView({
         </div>
       )}
 
-      {/* Ticket Booking Warning */}
       {hasActivePrizes && !hasBookedTickets && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
           <div className="flex">
@@ -300,7 +282,6 @@ function PlayingPhaseView({
         </div>
       )}
 
-      {/* Prize Progress Status */}
       {hasActivePrizes && hasBookedTickets && (
         <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-blue-700">
           <div className="flex">
@@ -323,19 +304,17 @@ function PlayingPhaseView({
         </div>
       )}
 
-      {/* Game Controls - FIXED interface */}
       <GameControls
         gameStatus={gameStatus}
         soundEnabled={soundEnabled}
         delaySeconds={callDelay}
-        onStatusChange={onStatusChange} // This prop now exists in interface
+        onStatusChange={onStatusChange}
         onSoundToggle={onSoundToggle}
         onDelayChange={onDelayChange}
         onGameEnd={onGameEnd}
         disableControls={isGameComplete || allPrizesWon}
       />
 
-      {/* Current Number Display */}
       {numberSystem.currentNumber && (
         <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
           <div className="text-center">
@@ -354,7 +333,6 @@ function PlayingPhaseView({
         </div>
       )}
 
-      {/* Number Board */}
       <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
         <NumberBoard
           calledNumbers={numberSystem.calledNumbers || []}
@@ -366,7 +344,6 @@ function PlayingPhaseView({
         />
       </div>
       
-      {/* Game Progress Card */}
       <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
         <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2 sm:mb-4">Game Progress</h3>
         <div className="grid grid-cols-2 gap-2 sm:gap-4">
@@ -402,7 +379,6 @@ function PlayingPhaseView({
         </div>
       </div>
 
-      {/* Winners Display */}
       <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-6">
         <WinnerDisplay
           winners={winners}
@@ -414,7 +390,6 @@ function PlayingPhaseView({
         />
       </div>
 
-      {/* Game Statistics */}
       <div className="mt-8 bg-white rounded-lg shadow-sm border p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
@@ -439,7 +414,6 @@ function PlayingPhaseView({
         </div>
       </div>
       
-      {/* Toast notifications */}
       {showToast && (
         <Toast
           message={toastMessage}
