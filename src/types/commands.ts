@@ -1,4 +1,4 @@
-// src/types/commands.ts - FIXED all TypeScript compilation errors
+// src/types/commands.ts - UPDATED with Return to Setup Command
 // Command type definitions for the Command Queue Pattern
 
 import type { Game } from './game';
@@ -110,6 +110,14 @@ export interface CancelBookingCommand extends BaseCommand {
   };
 }
 
+// NEW: Return to Setup Command
+export interface ReturnToSetupCommand extends BaseCommand {
+  type: 'RETURN_TO_SETUP';
+  payload: {
+    clearBookings?: boolean; // Optional: whether to clear existing bookings (default: true)
+  };
+}
+
 // Union type of all possible commands with proper discrimination
 export type GameCommand = 
   | CallNumberCommand
@@ -124,7 +132,8 @@ export type GameCommand =
   | CompleteGameCommand
   | UpdateCallDelayCommand
   | UpdateSoundSettingsCommand
-  | CancelBookingCommand;
+  | CancelBookingCommand
+  | ReturnToSetupCommand; // NEW: Added to union type
 
 // Command result interface
 export interface CommandResult {
@@ -218,6 +227,7 @@ export interface CommandFactory {
   updatePrizeWinners: (hostId: string, prizeType: keyof Game.Winners, ticketIds: string[], playerName: string, phoneNumber: string, allPrizeTypes: string[]) => UpdatePrizeWinnersCommand;
   updateGameSettings: (hostId: string, settings: Partial<Game.Settings>) => UpdateGameSettingsCommand;
   completeGame: (hostId: string, reason?: string) => CompleteGameCommand;
+  returnToSetup: (hostId: string, clearBookings?: boolean) => ReturnToSetupCommand; // NEW
 }
 
 // Command validation functions type
@@ -286,6 +296,11 @@ export function isCancelBookingCommand(command: GameCommand): command is CancelB
   return command.type === 'CANCEL_BOOKING';
 }
 
+// NEW: Type guard for return to setup command
+export function isReturnToSetupCommand(command: GameCommand): command is ReturnToSetupCommand {
+  return command.type === 'RETURN_TO_SETUP';
+}
+
 // Command factory implementation
 export const createCommandFactory = (generateId: () => string): CommandFactory => ({
   callNumber: (hostId: string, number: number): CallNumberCommand => ({
@@ -334,6 +349,15 @@ export const createCommandFactory = (generateId: () => string): CommandFactory =
     timestamp: Date.now(),
     hostId,
     payload: { reason }
+  }),
+
+  // NEW: Return to setup factory method
+  returnToSetup: (hostId: string, clearBookings?: boolean): ReturnToSetupCommand => ({
+    id: generateId(),
+    type: 'RETURN_TO_SETUP',
+    timestamp: Date.now(),
+    hostId,
+    payload: { clearBookings: clearBookings ?? true }
   })
 });
 
@@ -351,6 +375,7 @@ export function getCommandPriority(command: GameCommand): CommandPriority {
     case 'START_BOOKING_PHASE':
     case 'START_PLAYING_PHASE':
     case 'CANCEL_BOOKING':
+    case 'RETURN_TO_SETUP': // NEW: High priority for navigation
       return CommandPriority.HIGH;
     
     case 'UPDATE_BOOKING':
