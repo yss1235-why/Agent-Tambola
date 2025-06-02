@@ -1,4 +1,4 @@
-// src/services/GameDatabaseService.ts - OPTIMIZED VERSION
+// src/services/GameDatabaseService.ts - ENHANCED for settings handling
 import { ref, update, get, onValue, off, remove } from 'firebase/database';
 import { database } from '../lib/firebase';
 import type { Game } from '../types/game';
@@ -7,11 +7,11 @@ export class GameDatabaseService {
   private static instance: GameDatabaseService;
   
   // Optimized batch system with immediate updates for critical operations
-  private criticalUpdates = new Set(['gameState/status', 'gameState/isAutoCalling']);
+  private criticalUpdates = new Set(['gameState/status', 'gameState/isAutoCalling', 'settings']);
   private batchUpdateTimers = new Map<string, NodeJS.Timeout>();
   private pendingBatchUpdates = new Map<string, Record<string, any>>();
-  private readonly BATCH_DELAY = 100; // Reduced to 100ms for faster updates
-  private readonly CRITICAL_DELAY = 50; // Even faster for critical updates
+  private readonly BATCH_DELAY = 100;
+  private readonly CRITICAL_DELAY = 50;
 
   private constructor() {}
 
@@ -23,7 +23,7 @@ export class GameDatabaseService {
   }
 
   /**
-   * IMMEDIATE update for critical operations (status changes, pause/play)
+   * IMMEDIATE update for critical operations (status changes, pause/play, SETTINGS)
    */
   public async immediateUpdate(hostId: string, path: string, data: any): Promise<void> {
     try {
@@ -57,6 +57,23 @@ export class GameDatabaseService {
       console.error(`❌ Fast update failed:`, error);
       throw new Error(`Fast update failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * 🔥 ENHANCED: Settings update with immediate processing
+   */
+  public async updateGameSettings(hostId: string, settings: Partial<Game.Settings>): Promise<void> {
+    console.log('🔥 CRITICAL: Updating game settings immediately:', {
+      enabledPrizes: Object.entries(settings.prizes || {}).filter(([_, enabled]) => enabled).length,
+      maxTickets: settings.maxTickets,
+      callDelay: settings.callDelay,
+      hostPhone: settings.hostPhone ? 'Present' : 'Missing'
+    });
+    
+    // Settings updates are CRITICAL - use immediate update
+    await this.immediateUpdate(hostId, 'currentGame/settings', settings);
+    
+    console.log('✅ Game settings updated successfully');
   }
 
   /**
@@ -103,7 +120,7 @@ export class GameDatabaseService {
   }
 
   /**
-   * Optimized batch update for complex operations
+   * 🔥 ENHANCED: Batch update with settings as critical
    */
   public async batchUpdateGameData(
     hostId: string,
@@ -114,11 +131,23 @@ export class GameDatabaseService {
       tickets?: Record<string, Partial<Game.Ticket>>;
       metrics?: Game.BookingMetrics;
       players?: Record<string, Game.Player | null>;
-      settings?: Partial<Game.Settings>;
+      settings?: Partial<Game.Settings>; // 🔥 CRITICAL for prize detection
     }
   ): Promise<void> {
     const batchUpdates: Record<string, any> = {};
     const criticalUpdates: Record<string, any> = {};
+    
+    // 🔥 CRITICAL: Settings updates are now treated as critical
+    if (updates.settings) {
+      console.log('🔥 CRITICAL: Settings detected in batch update:', {
+        enabledPrizes: Object.entries(updates.settings.prizes || {}).filter(([_, enabled]) => enabled).length,
+        maxTickets: updates.settings.maxTickets,
+        callDelay: updates.settings.callDelay,
+        hostPhone: updates.settings.hostPhone ? 'Present' : 'Missing'
+      });
+      
+      criticalUpdates[`hosts/${hostId}/currentGame/settings`] = updates.settings;
+    }
     
     // Game state updates
     if (updates.gameState) {
@@ -161,22 +190,17 @@ export class GameDatabaseService {
       }
     });
     
-    // Handle metrics and settings
+    // Handle metrics
     if (updates.metrics) {
       batchUpdates[`hosts/${hostId}/currentGame/bookingMetrics`] = updates.metrics;
     }
     
-    if (updates.settings) {
-      Object.entries(updates.settings).forEach(([key, value]) => {
-        batchUpdates[`hosts/${hostId}/currentGame/settings/${key}`] = value;
-      });
-    }
-    
     try {
-      // Execute critical updates first
+      // 🔥 Execute critical updates first (especially settings)
       if (Object.keys(criticalUpdates).length > 0) {
         console.log(`⚡ CRITICAL batch: ${Object.keys(criticalUpdates).length} updates`);
         await update(ref(database), criticalUpdates);
+        console.log('✅ Critical updates completed (including settings)');
       }
       
       // Then execute regular updates
@@ -203,7 +227,19 @@ export class GameDatabaseService {
         return null;
       }
       
-      return snapshot.val() as Game.CurrentGame;
+      const gameData = snapshot.val() as Game.CurrentGame;
+      
+      // 🔥 DEBUG: Log loaded settings for debugging
+      if (gameData?.settings?.prizes) {
+        console.log('📁 Game data loaded with settings:', {
+          enabledPrizes: Object.entries(gameData.settings.prizes).filter(([_, enabled]) => enabled).length,
+          maxTickets: gameData.settings.maxTickets,
+          callDelay: gameData.settings.callDelay,
+          hostPhone: gameData.settings.hostPhone ? 'Present' : 'Missing'
+        });
+      }
+      
+      return gameData;
     } catch (error) {
       console.error('Error getting current game:', error);
       throw new Error(`Failed to get current game: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -224,6 +260,16 @@ export class GameDatabaseService {
       (snapshot) => {
         try {
           const data = snapshot.exists() ? snapshot.val() as Game.CurrentGame : null;
+          
+          // 🔥 DEBUG: Log subscription updates for settings
+          if (data?.settings?.prizes) {
+            console.log('📡 Subscription update - settings:', {
+              enabledPrizes: Object.entries(data.settings.prizes).filter(([_, enabled]) => enabled).length,
+              phase: data.gameState?.phase,
+              status: data.gameState?.status
+            });
+          }
+          
           callback(data);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Data processing error';
@@ -248,7 +294,15 @@ export class GameDatabaseService {
     try {
       const gameRef = ref(database, `hosts/${hostId}/currentGame`);
       await update(gameRef, game);
-      console.log(`✅ Complete game data set for ${hostId}`);
+      
+      // 🔥 DEBUG: Log game creation with settings
+      if (game?.settings?.prizes) {
+        console.log(`✅ Complete game data set for ${hostId} with settings:`, {
+          enabledPrizes: Object.entries(game.settings.prizes).filter(([_, enabled]) => enabled).length,
+          maxTickets: game.settings.maxTickets,
+          callDelay: game.settings.callDelay
+        });
+      }
     } catch (error) {
       console.error(`Error setting current game for ${hostId}:`, error);
       throw new Error(`Failed to set current game: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -287,19 +341,6 @@ export class GameDatabaseService {
   }
 
   /**
-   * Update game settings
-   */
-  public async updateGameSettings(hostId: string, settings: Partial<Game.Settings>): Promise<void> {
-    const batchUpdates: Record<string, any> = {};
-    
-    Object.entries(settings).forEach(([key, value]) => {
-      batchUpdates[`hosts/${hostId}/currentGame/settings/${key}`] = value;
-    });
-
-    await this.fastUpdate(hostId, { [`currentGame/settings`]: batchUpdates });
-  }
-
-  /**
    * Update player information
    */
   public async updatePlayer(hostId: string, playerId: string, player: Game.Player): Promise<void> {
@@ -315,7 +356,19 @@ export class GameDatabaseService {
     try {
       const settingsRef = ref(database, `hosts/${hostId}/defaultSettings`);
       const snapshot = await get(settingsRef);
-      return snapshot.exists() ? snapshot.val() as Game.Settings : null;
+      
+      if (snapshot.exists()) {
+        const settings = snapshot.val() as Game.Settings;
+        console.log('📁 Default settings loaded:', {
+          enabledPrizes: Object.entries(settings.prizes || {}).filter(([_, enabled]) => enabled).length,
+          maxTickets: settings.maxTickets,
+          callDelay: settings.callDelay,
+          hostPhone: settings.hostPhone ? 'Present' : 'Missing'
+        });
+        return settings;
+      }
+      
+      return null;
     } catch (error) {
       console.error(`Error getting default settings for ${hostId}:`, error);
       return null;
@@ -327,6 +380,13 @@ export class GameDatabaseService {
    */
   public async saveDefaultSettings(hostId: string, settings: Game.Settings): Promise<void> {
     try {
+      console.log('💾 Saving default settings:', {
+        enabledPrizes: Object.entries(settings.prizes || {}).filter(([_, enabled]) => enabled).length,
+        maxTickets: settings.maxTickets,
+        callDelay: settings.callDelay,
+        hostPhone: settings.hostPhone ? 'Present' : 'Missing'
+      });
+      
       // Background save for settings
       setTimeout(async () => {
         try {
