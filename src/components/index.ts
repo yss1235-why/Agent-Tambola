@@ -1,8 +1,8 @@
-// src/components/index.ts - Cleaned up version removing deleted components
+// src/components/index.ts - FIXED: Removed profile, settings, and history component exports
 
 // Common UI Components
 export { default as LoadingSpinner } from './LoadingSpinner';
-export { ErrorBoundary } from './Common/ErrorBoundary'; // Keeping only one error boundary
+export { ErrorBoundary } from './Common/ErrorBoundary';
 export { default as Toast } from './Common/Toast';
 export { default as GameControls } from './GameControls';
 
@@ -21,9 +21,4 @@ export { default as BookingPhase } from './Dashboard/GamePhases/BookingPhase/Boo
 export { default as PlayingPhase } from './Dashboard/GamePhases/PlayingPhase/PlayingPhase';
 export { default as PlayingPhaseView } from './Dashboard/GamePhases/PlayingPhase/PlayingPhaseView';
 export { default as NumberBoard } from './Dashboard/GamePhases/PlayingPhase/components/NumberBoard';
-export { default as WinnerDisplay } from './Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay'; // Removed SafeWinnerDisplay
-
-// User components
-export { default as UserProfile } from './Profile/UserProfile';
-export { default as UserSettings } from './Settings/UserSettings';
-export { default as SessionHistory } from './History/SessionHistory';
+export { default as WinnerDisplay } from './Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay';
