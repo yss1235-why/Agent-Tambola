@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - FINAL FIX: Complete type safety
+// src/services/CommandProcessor.ts - COMPLETE FIX: All TypeScript errors resolved
 import { GameCommand, CommandResult, CommandContext, CommandValidationResult } from '../types/commands';
 import { GameDatabaseService } from './GameDatabaseService';
 import { validateAllPrizes, ValidationContext } from '../utils/prizeValidation';
@@ -355,6 +355,7 @@ export class CommandProcessor {
     return this.createSuccessResult(command, { ticketId, updatedBooking });
   }
   
+  // FIXED: Type-safe prize winners update
   private async executeUpdatePrizeWinners(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     if (abortSignal?.aborted) throw new Error('Update prize winners was aborted');
     
@@ -363,16 +364,35 @@ export class CommandProcessor {
     
     if (!currentGame) throw new Error('No active game found');
     
-    const currentWinners = currentGame.gameState?.winners || {};
-    const updatedWinners = {
+    // FIXED: Ensure prizeType is a valid key of Game.Winners
+    const validPrizeTypes: Array<keyof Game.Winners> = [
+      'quickFive', 'topLine', 'middleLine', 'bottomLine', 'corners', 
+      'starCorners', 'halfSheet', 'fullSheet', 'fullHouse', 'secondFullHouse'
+    ];
+    
+    if (!validPrizeTypes.includes(prizeType as keyof Game.Winners)) {
+      throw new Error(`Invalid prize type: ${prizeType}`);
+    }
+    
+    const currentWinners = currentGame.gameState?.winners || {
+      quickFive: [], topLine: [], middleLine: [], bottomLine: [],
+      corners: [], starCorners: [], halfSheet: [], fullSheet: [],
+      fullHouse: [], secondFullHouse: []
+    };
+    
+    // FIXED: Type-safe access to winners
+    const prizeKey = prizeType as keyof Game.Winners;
+    const existingWinners = currentWinners[prizeKey] || [];
+    
+    const updatedWinners: Game.Winners = {
       ...currentWinners,
-      [prizeType]: [...(currentWinners[prizeType] || []), ...ticketIds]
+      [prizeKey]: [...existingWinners, ...ticketIds]
     };
     
     await this.databaseService.updateGameState(hostId, { winners: updatedWinners });
     
     try {
-      await this.audioManager.playPrizeWinEffect(prizeType);
+      await this.audioManager.playPrizeWinEffect(prizeKey);
     } catch (error) {
       console.warn('Prize sound failed:', error);
     }
@@ -684,14 +704,22 @@ export class CommandProcessor {
   }
   
   /**
-   * FINAL FIX: Prize checking with complete type safety
+   * FIXED: Type-safe prize checking with proper Winners access
    */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
     try {
       const tickets = currentGame.activeTickets?.tickets || {};
       const bookings = currentGame.activeTickets?.bookings || {};
-      const currentWinners = currentGame.gameState?.winners || {};
-      const activePrizes = currentGame.settings?.prizes || {};
+      const currentWinners = currentGame.gameState?.winners || {
+        quickFive: [], topLine: [], middleLine: [], bottomLine: [],
+        corners: [], starCorners: [], halfSheet: [], fullSheet: [],
+        fullHouse: [], secondFullHouse: []
+      };
+      const activePrizes = currentGame.settings?.prizes || {
+        quickFive: false, topLine: false, middleLine: false, bottomLine: false,
+        corners: false, starCorners: false, halfSheet: false, fullSheet: false,
+        fullHouse: false, secondFullHouse: false
+      };
       
       if (Object.keys(bookings).length === 0 || !Object.values(activePrizes).some(Boolean)) {
         return;
@@ -708,13 +736,25 @@ export class CommandProcessor {
       const validationResults = validateAllPrizes(context);
       
       if (validationResults.length > 0) {
-        // FINAL FIX: Complete type safety for winners update
-        const winnersUpdate: Record<keyof Game.Winners, string[]> = {} as Record<keyof Game.Winners, string[]>;
+        // FIXED: Complete type safety for winners update
+        const winnersUpdate: Partial<Game.Winners> = {};
         let hasNewWinners = false;
         
         for (const result of validationResults) {
           if (result?.isWinner && Array.isArray(result.winningTickets) && result.winningTickets.length > 0) {
             const prizeType = result.prizeType;
+            
+            // FIXED: Validate prizeType is a valid key
+            const validPrizeTypes: Array<keyof Game.Winners> = [
+              'quickFive', 'topLine', 'middleLine', 'bottomLine', 'corners', 
+              'starCorners', 'halfSheet', 'fullSheet', 'fullHouse', 'secondFullHouse'
+            ];
+            
+            if (!validPrizeTypes.includes(prizeType)) {
+              console.warn(`Invalid prize type: ${prizeType}`);
+              continue;
+            }
+            
             const currentPrizeWinners = currentWinners[prizeType] || [];
             const newWinners = result.winningTickets.filter(ticketId => !currentPrizeWinners.includes(ticketId));
             
@@ -728,19 +768,22 @@ export class CommandProcessor {
         if (hasNewWinners && Object.keys(winnersUpdate).length > 0) {
           const updatedWinners: Game.Winners = { ...currentWinners };
           
-          // FINAL FIX: Type-safe assignment
+          // FIXED: Type-safe assignment with proper key validation
           (Object.keys(winnersUpdate) as Array<keyof Game.Winners>).forEach(prizeType => {
-            updatedWinners[prizeType] = winnersUpdate[prizeType];
+            const newWinnersList = winnersUpdate[prizeType];
+            if (newWinnersList && Array.isArray(newWinnersList)) {
+              updatedWinners[prizeType] = newWinnersList;
+            }
           });
           
           await this.databaseService.updateGameState(hostId, { winners: updatedWinners });
           
           // Check if all active prizes won
-          const allActivePrizesWon = Object.entries(activePrizes)
-            .filter(([_, isActive]) => isActive)
-            .every(([prizeType]) => {
-              const prizeKey = prizeType as keyof Game.Winners;
-              const winners = updatedWinners[prizeKey];
+          const allActivePrizesWon = (Object.keys(activePrizes) as Array<keyof Game.Settings['prizes']>)
+            .filter(prizeKey => activePrizes[prizeKey] === true)
+            .every(prizeKey => {
+              const prizeType = prizeKey as keyof Game.Winners;
+              const winners = updatedWinners[prizeType];
               return Array.isArray(winners) && winners.length > 0;
             });
           
