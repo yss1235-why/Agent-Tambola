@@ -1,6 +1,9 @@
+// src/components/Dashboard/GamePhases/GameSetup/components/PrizeConfiguration.tsx - CLEAN VERSION
+// Removed all instructional content and descriptions
+
 import { useState, useEffect } from 'react';
 import { Game } from '../../../../../types/game';
-import { AlertTriangle, RotateCcw, Info } from 'lucide-react';
+import { AlertTriangle, RotateCcw } from 'lucide-react';
 
 interface PrizeConfigurationProps {
   prizes: Game.Settings['prizes'];
@@ -10,8 +13,6 @@ interface PrizeConfigurationProps {
 interface PrizeToggleProps {
   label: string;
   checked: boolean;
-  description?: string;
-  icon?: React.ReactNode;
   importance?: 'standard' | 'primary' | 'secondary';
   onChange: () => void;
 }
@@ -32,8 +33,6 @@ const DEFAULT_PRIZES: Game.Settings['prizes'] = {
 function PrizeToggle({ 
   label, 
   checked, 
-  description, 
-  icon,
   importance = 'standard',
   onChange 
 }: PrizeToggleProps) {
@@ -76,13 +75,7 @@ function PrizeToggle({
               focus:ring-blue-500 mr-2 sm:mr-3"
           />
           <div>
-            <div className="flex items-center">
-              {icon && <span className="mr-1 sm:mr-2">{icon}</span>}
-              <span className="text-sm sm:text-base font-medium">{label}</span>
-            </div>
-            {description && (
-              <p className="text-gray-500 text-xs mt-0.5 sm:mt-1 line-clamp-2 sm:line-clamp-none">{description}</p>
-            )}
+            <span className="text-sm sm:text-base font-medium">{label}</span>
           </div>
         </label>
       </div>
@@ -95,7 +88,6 @@ function PrizeConfiguration({ prizes, onUpdate }: PrizeConfigurationProps) {
   const [hasValidationWarning, setHasValidationWarning] = useState(false);
 
   useEffect(() => {
-    // Validate that at least one prize is enabled
     const hasActivePrize = Object.values(prizes).some(value => value === true);
     setHasValidationWarning(!hasActivePrize);
   }, [prizes]);
@@ -123,48 +115,18 @@ function PrizeConfiguration({ prizes, onUpdate }: PrizeConfigurationProps) {
     setHasChanges(true);
   };
 
-  // Define descriptions and importance for each prize type
-  const prizeMetadata: Record<string, { description: string, importance: 'primary' | 'secondary' | 'standard' }> = {
-    quickFive: { 
-      description: 'First to complete any 5 numbers',
-      importance: 'standard'
-    },
-    topLine: { 
-      description: 'Complete the top row of numbers',
-      importance: 'standard'
-    },
-    middleLine: { 
-      description: 'Complete the middle row of numbers',
-      importance: 'standard'
-    },
-    bottomLine: { 
-      description: 'Complete the bottom row of numbers',
-      importance: 'standard'
-    },
-    corners: { 
-      description: 'Complete all four corner numbers',
-      importance: 'standard'
-    },
-    starCorners: { 
-      description: 'Complete all star-marked corners (advanced)',
-      importance: 'secondary'
-    },
-    halfSheet: { 
-      description: 'Complete three consecutive tickets',
-      importance: 'standard'
-    },
-    fullSheet: { 
-      description: 'Complete all six tickets in a sheet',
-      importance: 'secondary'
-    },
-    fullHouse: { 
-      description: 'Complete all numbers in a ticket',
-      importance: 'primary'
-    },
-    secondFullHouse: { 
-      description: 'Second player to complete all numbers',
-      importance: 'secondary'
-    }
+  // Prize importance mapping (no descriptions)
+  const prizeImportance: Record<string, 'primary' | 'secondary' | 'standard'> = {
+    quickFive: 'standard',
+    topLine: 'standard',
+    middleLine: 'standard',
+    bottomLine: 'standard',
+    corners: 'standard',
+    starCorners: 'secondary',
+    halfSheet: 'standard',
+    fullSheet: 'secondary',
+    fullHouse: 'primary',
+    secondFullHouse: 'secondary'
   };
 
   return (
@@ -203,23 +165,17 @@ function PrizeConfiguration({ prizes, onUpdate }: PrizeConfigurationProps) {
       )}
       
       <div className="mt-6">
-        <div className="mb-3 flex items-center text-sm text-gray-600">
-          <Info className="w-4 h-4 mr-1" />
-          <span>Popular prizes marked in blue</span>
-        </div>
-        
         <div className="grid grid-cols-1 gap-2 sm:gap-3">
           {Object.keys(prizes).map((keyString) => {
             const key = keyString as keyof Game.Settings['prizes'];
-            const metadata = prizeMetadata[keyString];
+            const importance = prizeImportance[keyString] || 'standard';
             
             return (
               <PrizeToggle
                 key={keyString}
                 label={keyString.replace(/([A-Z])/g, ' $1').trim()}
                 checked={prizes[key]}
-                description={metadata.description}
-                importance={metadata.importance}
+                importance={importance}
                 onChange={() => togglePrize(key)}
               />
             );
