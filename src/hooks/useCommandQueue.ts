@@ -1,4 +1,4 @@
-// src/hooks/useCommandQueue.ts - PROPER FIX: Immediate state synchronization
+// src/hooks/useCommandQueue.ts - UPDATED with Return to Setup Command
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { CommandQueue } from '../services/CommandQueue';
 import { GameCommand, CommandResult, CommandPriority, CommandError, CommandStats, CreateCommand } from '../types/commands';
@@ -22,8 +22,9 @@ interface UseCommandQueueReturn {
   updateCallDelay: (callDelay: number) => string;
   updateSoundSettings: (soundEnabled: boolean) => string;
   cancelBooking: (ticketIds: string[]) => string;
+  returnToSetup: (clearBookings?: boolean) => string; // NEW: Return to setup command
   
-  // PROPER FIX: Immediate state tracking
+  // Immediate state tracking
   isProcessing: boolean;
   queueLength: number;
   currentCommand: string | null;
@@ -35,7 +36,7 @@ interface UseCommandQueueReturn {
   // Statistics
   stats: CommandStats;
   
-  // PROPER FIX: Health monitoring
+  // Health monitoring
   systemHealth: { healthy: boolean; issues: string[] };
 }
 
@@ -50,7 +51,7 @@ export function useCommandQueue({
   onResult,
   onError
 }: UseCommandQueueProps): UseCommandQueueReturn {
-  // PROPER FIX: Immediate state tracking with refs for real-time updates
+  // Immediate state tracking with refs for real-time updates
   const [isProcessing, setIsProcessing] = useState(false);
   const [queueLength, setQueueLength] = useState(0);
   const [currentCommand, setCurrentCommand] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export function useCommandQueue({
     issues: []
   });
   
-  // PROPER FIX: Use refs to prevent stale closures
+  // Use refs to prevent stale closures
   const commandQueue = useRef(CommandQueue.getInstance());
   const onResultRef = useRef(onResult);
   const onErrorRef = useRef(onError);
@@ -78,7 +79,7 @@ export function useCommandQueue({
     onErrorRef.current = onError;
   }, [onResult, onError]);
   
-  // PROPER FIX: Real-time state synchronization
+  // Real-time state synchronization
   const syncQueueState = useCallback(() => {
     const queue = commandQueue.current;
     const newIsProcessing = queue.isProcessing();
@@ -87,7 +88,7 @@ export function useCommandQueue({
     const newStats = queue.getStats();
     const newHealth = queue.healthCheck();
     
-    // PROPER FIX: Only update if values actually changed (prevent unnecessary re-renders)
+    // Only update if values actually changed (prevent unnecessary re-renders)
     setIsProcessing(prev => prev !== newIsProcessing ? newIsProcessing : prev);
     setQueueLength(prev => prev !== newQueueLength ? newQueueLength : prev);
     setCurrentCommand(prev => prev !== newCurrentCommand ? newCurrentCommand : prev);
@@ -95,17 +96,17 @@ export function useCommandQueue({
     setSystemHealth(prev => JSON.stringify(prev) !== JSON.stringify(newHealth) ? newHealth : prev);
   }, []);
   
-  // PROPER FIX: Subscribe to queue events with immediate state sync
+  // Subscribe to queue events with immediate state sync
   useEffect(() => {
     const queue = commandQueue.current;
     
-    // PROPER FIX: Enhanced result listener with immediate state update
+    // Enhanced result listener with immediate state update
     const unsubscribeResults = queue.addListener((result: CommandResult) => {
       console.log(`🎯 Command result received: ${result.command.type}`, result);
       
       setLastResult(result);
       
-      // PROPER FIX: Immediately sync state after each result
+      // Immediately sync state after each result
       syncQueueState();
       
       // Call external callback
@@ -116,13 +117,13 @@ export function useCommandQueue({
       }
     });
     
-    // PROPER FIX: Enhanced error listener
+    // Enhanced error listener
     const unsubscribeErrors = queue.addErrorListener((error: CommandError) => {
       console.error(`🚨 Command error received:`, error);
       
       setLastError(error);
       
-      // PROPER FIX: Immediately sync state after error
+      // Immediately sync state after error
       syncQueueState();
       
       // Call external callback
@@ -133,10 +134,10 @@ export function useCommandQueue({
       }
     });
     
-    // PROPER FIX: Initial state sync
+    // Initial state sync
     syncQueueState();
     
-    // PROPER FIX: Periodic state sync to catch any missed updates
+    // Periodic state sync to catch any missed updates
     const syncInterval = setInterval(syncQueueState, 1000);
     
     return () => {
@@ -147,14 +148,14 @@ export function useCommandQueue({
   }, [syncQueueState]);
   
   /**
-   * PROPER FIX: Generate unique command ID
+   * Generate unique command ID
    */
   const generateCommandId = useCallback((): string => {
     return `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }, []);
   
   /**
-   * PROPER FIX: Send command with immediate UI feedback
+   * Send command with immediate UI feedback
    */
   const sendCommand = useCallback((
     command: CreateCommand<GameCommand>, 
@@ -169,7 +170,7 @@ export function useCommandQueue({
     
     console.log(`📤 Sending command: ${fullCommand.type}`, fullCommand);
     
-    // PROPER FIX: Immediately update UI state before sending
+    // Immediately update UI state before sending
     setIsProcessing(true);
     setQueueLength(prev => prev + 1);
     setCurrentCommand(fullCommand.type);
@@ -177,19 +178,19 @@ export function useCommandQueue({
     const success = commandQueue.current.enqueue(fullCommand, priority);
     
     if (!success) {
-      // PROPER FIX: Reset state immediately if enqueue failed
+      // Reset state immediately if enqueue failed
       console.error(`❌ Failed to enqueue command: ${fullCommand.type}`);
       syncQueueState(); // Sync actual state
       throw new Error(`Failed to enqueue command: ${fullCommand.type}`);
     }
     
-    // PROPER FIX: Sync state immediately after successful enqueue
+    // Sync state immediately after successful enqueue
     setTimeout(syncQueueState, 10);
     
     return fullCommand.id;
   }, [hostId, generateCommandId, syncQueueState]);
   
-  // PROPER FIX: Specific command helpers with immediate feedback
+  // Specific command helpers with immediate feedback
   const callNumber = useCallback((number: number): string => {
     console.log(`🎲 Calling number: ${number}`);
     return sendCommand({
@@ -317,6 +318,15 @@ export function useCommandQueue({
     }, CommandPriority.HIGH);
   }, [sendCommand]);
   
+  // NEW: Return to setup command
+  const returnToSetup = useCallback((clearBookings: boolean = true): string => {
+    console.log(`🔄 Returning to setup phase (clearBookings: ${clearBookings})`);
+    return sendCommand({
+      type: 'RETURN_TO_SETUP',
+      payload: { clearBookings }
+    }, CommandPriority.HIGH);
+  }, [sendCommand]);
+  
   return {
     // Core command sending
     sendCommand,
@@ -335,8 +345,9 @@ export function useCommandQueue({
     updateCallDelay,
     updateSoundSettings,
     cancelBooking,
+    returnToSetup, // NEW: Return to setup command
     
-    // PROPER FIX: Real-time state
+    // Real-time state
     isProcessing,
     queueLength,
     currentCommand,
