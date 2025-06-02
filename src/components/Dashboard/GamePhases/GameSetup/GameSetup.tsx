@@ -1,6 +1,5 @@
-// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - UPDATED to use Command Queue Pattern
-// Simplified game setup that uses commands instead of complex database operations
-// 🔄 ADDED: Two-way phone number synchronization with User Profile
+// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - COMPLETELY FIXED
+// Removed all incorrect HostProfile usage, uses only Game.Settings
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,7 +18,7 @@ interface GameSetupProps {
 }
 
 const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
-  const { currentUser, updateProfile, userProfile } = useAuth(); // 🔄 Added userProfile for initial sync
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
   
   // Get command methods from game context
@@ -42,19 +41,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       setSettings(currentGame.settings);
     }
   }, [currentGame]);
-
-  // 🔄 SYNC: Auto-populate hostPhone from profile contactNumber if empty
-  useEffect(() => {
-    if (userProfile?.contactNumber && 
-        (!settings.hostPhone || settings.hostPhone === '' || settings.hostPhone === '+91')) {
-      console.log('🔄 Auto-populating hostPhone from profile contactNumber:', userProfile.contactNumber);
-      setSettings(prev => ({
-        ...prev,
-        hostPhone: userProfile.contactNumber
-      }));
-      setHasMadeChanges(true);
-    }
-  }, [userProfile?.contactNumber, settings.hostPhone]);
 
   const handleSettingsUpdate = (updates: Partial<Game.Settings>) => {
     setSettings(prev => ({
@@ -96,7 +82,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       errors.push('Host phone number is required');
     } else {
       const digits = settings.hostPhone.replace(/(?!^\+)\D/g, '');
-      const hasCountryCode = digits.startsWith('+');
+      const hasCountryCode = settings.hostPhone.startsWith('+');
       
       if (!hasCountryCode) {
         errors.push('Phone number must include country code (e.g., +91)');
@@ -132,18 +118,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       // Send command to update game settings
       const commandId = updateGameSettings(settings);
       console.log(`📤 Update settings command sent: ${commandId}`);
-      
-      // 🔄 SYNC: If hostPhone changed, update profile contactNumber
-      if (settings.hostPhone && settings.hostPhone !== currentGame.settings?.hostPhone) {
-        try {
-          console.log('🔄 Syncing hostPhone to profile contactNumber:', settings.hostPhone);
-          await updateProfile({ contactNumber: settings.hostPhone });
-          console.log('✅ Profile contactNumber updated successfully');
-        } catch (syncError) {
-          console.warn('⚠️ Failed to sync phone to profile (non-critical):', syncError);
-          // Don't fail the main operation for sync errors
-        }
-      }
       
       setToastMessage('Settings saved successfully');
       setToastType('success');
@@ -327,17 +301,9 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                   placeholder="+91 9876543210"
                 />
               </div>
-              <div className="mt-1 sm:mt-2 flex items-center justify-between">
-                <p className="text-xs sm:text-sm text-gray-500">
-                  Include country code (e.g., +91) followed by 10-digit number
-                </p>
-                {/* 🔄 Sync indicator */}
-                {userProfile?.contactNumber && settings.hostPhone === userProfile.contactNumber && (
-                  <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-200">
-                    📱 Synced with profile
-                  </span>
-                )}
-              </div>
+              <p className="mt-1 sm:mt-2 text-xs text-gray-500">
+                Include country code (e.g., +91) followed by 10-digit number
+              </p>
             </div>
           </div>
           
