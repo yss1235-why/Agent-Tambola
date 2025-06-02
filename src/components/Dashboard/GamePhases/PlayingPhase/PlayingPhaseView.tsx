@@ -1,8 +1,6 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhaseView.tsx - CLEAN VERSION
-// Removed instructional content
-
+// src/components/Dashboard/GamePhases/PlayingPhase/PlayingPhaseView.tsx - ENHANCED for debugging
 import { useState, useEffect } from 'react';
-import { AlertCircle, Award, Check, Trophy } from 'lucide-react'; 
+import { AlertCircle, Award, Check, Trophy, AlertTriangle } from 'lucide-react'; 
 import { GameControls, LoadingSpinner, Toast } from '@components';
 import NumberBoard from './components/NumberBoard';
 import WinnerDisplay from './components/WinnerDisplay';
@@ -74,11 +72,59 @@ function PlayingPhaseView({
     ticketCount: 0,
     averageSpeed: 0 
   });
+  const [prizeDebugInfo, setPrizeDebugInfo] = useState<{
+    settingsSource: string;
+    enabledPrizes: number;
+    settingsValid: boolean;
+    debugDetails: any;
+  } | null>(null);
 
   const activeTickets = currentGame?.activeTickets || { tickets: {}, bookings: {} };
   const settings = currentGame?.settings || DEFAULT_SETTINGS;
   const gameState = currentGame?.gameState || { status: 'paused' };
   const numberSystem = currentGame?.numberSystem || { callDelay: 5, calledNumbers: [], queue: [], currentNumber: null };
+  
+  // 🔥 ENHANCED: Prize configuration debugging
+  useEffect(() => {
+    if (currentGame) {
+      const gameSettings = currentGame.settings;
+      const hasSettingsFromGame = !!gameSettings;
+      const settingsToUse = gameSettings || DEFAULT_SETTINGS;
+      const enabledPrizes = Object.entries(settingsToUse.prizes || {})
+        .filter(([_, isEnabled]) => isEnabled);
+      
+      const debugInfo = {
+        settingsSource: hasSettingsFromGame ? 'currentGame.settings' : 'DEFAULT_SETTINGS',
+        enabledPrizes: enabledPrizes.length,
+        settingsValid: hasSettingsFromGame && enabledPrizes.length > 0,
+        debugDetails: {
+          currentGameHasSettings: hasSettingsFromGame,
+          settingsObject: gameSettings?.prizes,
+          enabledPrizeNames: enabledPrizes.map(([name]) => name),
+          gamePhase: currentGame.gameState?.phase,
+          gameStatus: currentGame.gameState?.status,
+          maxTickets: settingsToUse.maxTickets,
+          callDelay: settingsToUse.callDelay
+        }
+      };
+      
+      setPrizeDebugInfo(debugInfo);
+      
+      // 🔥 LOG: Prize configuration for debugging
+      console.group('🔍 PLAYING PHASE - Prize Configuration Debug');
+      console.log('Settings source:', debugInfo.settingsSource);
+      console.log('Enabled prizes:', debugInfo.enabledPrizes);
+      console.log('Settings valid:', debugInfo.settingsValid);
+      console.log('Debug details:', debugInfo.debugDetails);
+      console.groupEnd();
+      
+      // 🔥 WARN: If no prizes enabled from game settings
+      if (!debugInfo.settingsValid && hasSettingsFromGame) {
+        console.warn('🚨 SETTINGS BUG DETECTED: Game has settings but no prizes enabled!');
+        console.warn('This indicates the settings bug where prizes are not saved properly.');
+      }
+    }
+  }, [currentGame]);
   
   const hasActivePrizes = settings?.prizes ? Object.values(settings.prizes).some(isActive => isActive) : false;
   const hasBookedTickets = Object.keys(activeTickets?.bookings || {}).length > 0;
@@ -250,6 +296,31 @@ function PlayingPhaseView({
         </div>
       )}
 
+      {/* 🔥 NEW: Settings Debug Panel (Development Only) */}
+      {process.env.NODE_ENV === 'development' && prizeDebugInfo && !prizeDebugInfo.settingsValid && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertTriangle className="h-5 w-5 text-red-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">SETTINGS BUG DETECTED</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p><strong>Settings Source:</strong> {prizeDebugInfo.settingsSource}</p>
+                <p><strong>Enabled Prizes:</strong> {prizeDebugInfo.enabledPrizes} (should be &gt; 0)</p>
+                <p><strong>Issue:</strong> Prize settings were not saved properly during game setup.</p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-red-600">Debug Details</summary>
+                  <pre className="mt-1 text-xs bg-red-100 p-2 rounded overflow-auto">
+                    {JSON.stringify(prizeDebugInfo.debugDetails, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!hasActivePrizes && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
           <div className="flex">
@@ -260,6 +331,9 @@ function PlayingPhaseView({
               <h3 className="text-sm font-medium text-yellow-800">Prize Configuration Warning</h3>
               <div className="mt-2 text-sm text-yellow-700">
                 <p>No prizes have been configured for this game. Prize detection is disabled.</p>
+                {prizeDebugInfo && (
+                  <p className="mt-1"><strong>Debug:</strong> Settings source: {prizeDebugInfo.settingsSource}</p>
+                )}
               </div>
             </div>
           </div>
@@ -298,6 +372,9 @@ function PlayingPhaseView({
                     style={{ width: `${(wonPrizesCount / enabledPrizesCount) * 100}%` }}
                   ></div>
                 </div>
+                {prizeDebugInfo && process.env.NODE_ENV === 'development' && (
+                  <p className="mt-1 text-xs"><strong>Settings Debug:</strong> {prizeDebugInfo.enabledPrizes} prizes enabled from {prizeDebugInfo.settingsSource}</p>
+                )}
               </div>
             </div>
           </div>
@@ -410,6 +487,11 @@ function PlayingPhaseView({
             <p className="mt-2 text-3xl font-semibold text-gray-900">
               {wonPrizesCount}/{enabledPrizesCount}
             </p>
+            {prizeDebugInfo && process.env.NODE_ENV === 'development' && (
+              <p className="text-xs text-gray-400 mt-1">
+                Source: {prizeDebugInfo.settingsSource}
+              </p>
+            )}
           </div>
         </div>
       </div>
