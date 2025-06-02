@@ -1,4 +1,4 @@
-// src/App.tsx
+// src/App.tsx - UPDATED: Removed profile, settings, and history routes
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
@@ -9,9 +9,6 @@ import Dashboard from './components/Dashboard/Dashboard';
 import Login from './components/Auth/Login';
 import SubscriptionPage from './components/Auth/SubscriptionPage';
 import PlayingPhase from './components/Dashboard/GamePhases/PlayingPhase/PlayingPhase';
-import UserProfile from './components/Profile/UserProfile';
-import UserSettings from './components/Settings/UserSettings';
-import SessionHistory from './components/History/SessionHistory';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
 import appConfig from './config/appConfig';
 
@@ -238,22 +235,6 @@ const App: React.FC = () => {
                   />
                 } 
               />
-              
-              {/* History route with GameProvider */}
-              <Route 
-                path="/history" 
-                element={
-                  <ProtectedRoute 
-                    element={
-                      <GameRoutes element={<SessionHistory />} />
-                    } 
-                  />
-                } 
-              />
-              
-              {/* User settings routes */}
-              <Route path="/profile" element={<ProtectedRoute element={<UserProfile />} />} />
-              <Route path="/settings" element={<ProtectedRoute element={<UserSettings />} />} />
             </Route>
             
             {/* Fallback route */}
