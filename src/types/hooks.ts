@@ -1,19 +1,23 @@
-// src/types/hooks.ts - Fixed interface conflicts
+// src/types/hooks.ts - FIXED: Updated interface compatibility with new prizeValidation.ts
 import type { Game } from './game';
 
-// Prize win result interface - moved to top to avoid conflicts
+// FIXED: Prize win result interface - updated to match PrizeValidationResult from prizeValidation.ts
 export interface PrizeWinResult {
   playerId: string;
   playerName: string;
   phoneNumber: string;
   ticketId: string;
   prizeTypes: string[]; // Multiple prizes
+  isWinner: boolean; // Added for compatibility
+  winningTickets: string[]; // Added for compatibility  
+  prizeType: keyof Game.Winners; // Added for compatibility
+  allPrizeTypes: string[]; // Added for compatibility
 }
 
-// Shared callback interface for all game hooks - UPDATED
+// Shared callback interface for all game hooks - UPDATED with proper typing
 export interface GameHookCallbacks {
   onNumberCalled?: (number: number) => void;
-  onPrizeWon?: (result: PrizeWinResult) => void; // CHANGED: Updated to match new signature
+  onPrizeWon?: (result: PrizeWinResult) => void;
   onQueueChanged?: (queue: number[]) => void;
   onGameComplete?: () => void;
   onError?: (error: string) => void;
@@ -77,17 +81,17 @@ export interface PrizeValidationHookReturn {
   isValidating: boolean;
 }
 
-// Prize validation result interface for utility functions - UPDATED
+// FIXED: Prize validation result interface for utility functions - updated for compatibility
 export interface PrizeValidationResult {
   isWinner: boolean;
   winningTickets: string[];
   prizeType: keyof Game.Winners;
   playerName: string;
   phoneNumber: string;
-  allPrizeTypes: string[]; // New: for multiple prizes
+  allPrizeTypes: string[];
 }
 
-// Validation context interface for pure validation functions
+// FIXED: Validation context interface for pure validation functions
 export interface ValidationContext {
   tickets: Record<string, Game.Ticket>;
   bookings: Record<string, Game.Booking>;
@@ -150,4 +154,45 @@ export interface TicketHookReturn {
   validateTicketData: (tickets: Record<string, Game.Ticket>) => boolean;
   isLoading: boolean;
   error: string | null;
+}
+
+// FIXED: Type helper to convert PrizeValidationResult to PrizeWinResult for compatibility
+export function convertPrizeValidationToPrizeWin(
+  validationResult: PrizeValidationResult,
+  ticketId?: string
+): PrizeWinResult {
+  return {
+    playerId: `player_${Date.now()}`, // Generate a placeholder player ID
+    playerName: validationResult.playerName,
+    phoneNumber: validationResult.phoneNumber,
+    ticketId: ticketId || validationResult.winningTickets[0] || '',
+    prizeTypes: validationResult.allPrizeTypes,
+    isWinner: validationResult.isWinner,
+    winningTickets: validationResult.winningTickets,
+    prizeType: validationResult.prizeType,
+    allPrizeTypes: validationResult.allPrizeTypes
+  };
+}
+
+// FIXED: Type guard to check if result is a valid PrizeValidationResult
+export function isPrizeValidationResult(result: any): result is PrizeValidationResult {
+  return result && 
+         typeof result === 'object' &&
+         typeof result.isWinner === 'boolean' &&
+         Array.isArray(result.winningTickets) &&
+         typeof result.prizeType === 'string' &&
+         typeof result.playerName === 'string' &&
+         typeof result.phoneNumber === 'string' &&
+         Array.isArray(result.allPrizeTypes);
+}
+
+// FIXED: Type guard to check if result is a valid PrizeWinResult
+export function isPrizeWinResult(result: any): result is PrizeWinResult {
+  return result && 
+         typeof result === 'object' &&
+         typeof result.playerId === 'string' &&
+         typeof result.playerName === 'string' &&
+         typeof result.phoneNumber === 'string' &&
+         typeof result.ticketId === 'string' &&
+         Array.isArray(result.prizeTypes);
 }
