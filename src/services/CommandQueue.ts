@@ -298,7 +298,13 @@ export class CommandQueue {
     // PROPER FIX: Send completion signal to all listeners
     const completionResult: CommandResult = {
       success: true,
-      command: { type: 'PROCESSING_COMPLETE' } as GameCommand,
+      command: {
+        id: 'completion',
+        type: 'PROCESSING_COMPLETE' as any,
+        timestamp: Date.now(),
+        hostId: 'system',
+        payload: {}
+      } as GameCommand,
       timestamp: Date.now(),
       data: { processingComplete: true }
     };
@@ -448,5 +454,20 @@ export class CommandQueue {
     this.errorListeners.clear();
     
     console.log('✅ Command queue cleaned up');
+  }
+  
+  /**
+   * PROPER FIX: Debug method for development
+   */
+  public debugLog(): void {
+    if (process.env.NODE_ENV === 'development') {
+      console.group('🔍 CommandQueue Debug');
+      console.log('Queue length:', this.queue.length);
+      console.log('Processing:', this.processing);
+      console.log('Current command:', this.currentCommand?.type || 'none');
+      console.log('Stats:', this.stats);
+      console.log('Health:', this.healthCheck());
+      console.groupEnd();
+    }
   }
 }
