@@ -1,7 +1,7 @@
-// src/components/Layouts/MainLayout.tsx
+// src/components/Layouts/MainLayout.tsx - UPDATED: Removed profile, settings, history navigation
 import { useState } from 'react';
-import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { Menu, X, Home, Clock, User, Settings, LogOut } from 'lucide-react';
+import { Outlet, useNavigate } from 'react-router-dom';
+import { Menu, X, Home, LogOut } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Toast } from '../../components/Common/Toast';
 import appConfig from '../../config/appConfig';
@@ -64,7 +64,7 @@ const MainLayout = () => {
         </div>
       </header>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu - Simplified with only dashboard and sign out */}
       {isMenuOpen && (
         <div className="md:hidden bg-white border-b shadow-sm">
           <nav className="px-4 py-3">
@@ -73,24 +73,6 @@ const MainLayout = () => {
                 to="/dashboard"
                 icon={<Home size={20} />}
                 label="Dashboard"
-                onClick={() => setIsMenuOpen(false)}
-              />
-              <NavItem
-                to="/history"
-                icon={<Clock size={20} />}
-                label="History"
-                onClick={() => setIsMenuOpen(false)}
-              />
-              <NavItem
-                to="/profile"
-                icon={<User size={20} />}
-                label="Profile"
-                onClick={() => setIsMenuOpen(false)}
-              />
-              <NavItem
-                to="/settings"
-                icon={<Settings size={20} />}
-                label="Settings"
                 onClick={() => setIsMenuOpen(false)}
               />
               <li>
@@ -112,7 +94,7 @@ const MainLayout = () => {
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Main content - Sidebar removed */}
+        {/* Main content */}
         <main className="flex-1 overflow-auto">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <Outlet />
@@ -150,16 +132,22 @@ interface NavItemProps {
 }
 
 const NavItem: React.FC<NavItemProps> = ({ to, icon, label, onClick }) => {
+  const navigate = useNavigate();
+  
+  const handleClick = () => {
+    navigate(to);
+    onClick?.();
+  };
+  
   return (
     <li>
-      <Link
-        to={to}
-        className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
-        onClick={onClick}
+      <button
+        onClick={handleClick}
+        className="flex items-center w-full px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md text-left"
       >
         <span className="mr-3 text-gray-500">{icon}</span>
         <span>{label}</span>
-      </Link>
+      </button>
     </li>
   );
 };
