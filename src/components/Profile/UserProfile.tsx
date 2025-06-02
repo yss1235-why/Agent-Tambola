@@ -1,15 +1,13 @@
-// src/components/Profile/UserProfile.tsx - FIXED: Proper data reading and structure
-// 🔄 ADDED: Two-way phone number synchronization with Game Setup
+// src/components/Profile/UserProfile.tsx - COMPLETELY FIXED with robust error handling
 import React, { useState, useEffect } from 'react';
 import { updateEmail, updatePassword, reauthenticateWithCredential, 
   EmailAuthProvider } from 'firebase/auth';
 import { useAuth } from '@contexts';
-import { useGame } from '@contexts'; // 🔄 Added for phone number sync
 import { LoadingSpinner } from '@components';
 import { ref, get, update } from 'firebase/database';
 import { database } from '../../lib/firebase';
 
-// FIXED: Use the actual HostProfile structure from AuthContext
+// Use the actual HostProfile structure from AuthContext
 interface HostProfile {
   email: string;
   lastLogin: number;
@@ -17,15 +15,16 @@ interface HostProfile {
   status: 'active' | 'inactive';
   subscriptionEnd: number;
   username: string;
-  // Optional fields that might exist
+  // Optional fields
   organization?: string;
   contactNumber?: string;
   address?: string;
 }
 
-// FIXED: Create a proper ProfileData interface that maps to HostProfile
+// Simplified ProfileData interface for display
 interface ProfileData {
   username: string;
+  email: string;
   organization: string;
   contactNumber: string;
   address: string;
@@ -34,68 +33,125 @@ interface ProfileData {
     startDate: number;
     endDate: number;
     status: 'active' | 'expired' | 'pending';
+    daysRemaining: number;
     features: string[];
   };
 }
 
-// Simple error handler replacement
-const handleApiError = (error: any, defaultMessage: string): string => {
+// Safe error handler
+const handleError = (error: any, context: string): string => {
+  console.error(`Error in ${context}:`, error);
+  
   if (error instanceof Error) {
     return error.message;
   }
   if (typeof error === 'string') {
     return error;
   }
-  return defaultMessage;
+  if (error?.code) {
+    return `Firebase error: ${error.code}`;
+  }
+  return `An error occurred in ${context}`;
 };
 
-// FIXED: Simple Firebase utilities that read from correct path
+// Robust Firebase utilities with extensive error handling
 const readHostProfile = async (hostId: string): Promise<HostProfile | null> => {
   try {
-    // FIXED: Read directly from hosts/{hostId}, not hosts/{hostId}/profile
+    if (!hostId) {
+      throw new Error('Host ID is required');
+    }
+
+    console.log('Reading host profile for:', hostId);
+    
     const dataRef = ref(database, `hosts/${hostId}`);
     const snapshot = await get(dataRef);
     
     if (snapshot.exists()) {
-      return snapshot.val() as HostProfile;
+      const data = snapshot.val();
+      console.log('Raw profile data:', data);
+      
+      // Validate required fields
+      if (!data.email || !data.username || !data.role) {
+        console.warn('Profile data missing required fields:', data);
+        return null;
+      }
+      
+      return data as HostProfile;
     } else {
+      console.log('No profile data found for:', hostId);
       return null;
     }
   } catch (error) {
     console.error('Error reading host profile:', error);
-    throw new Error(error instanceof Error ? error.message : 'Failed to read profile');
+    throw new Error(handleError(error, 'profile reading'));
   }
 };
 
 const updateHostProfile = async (hostId: string, updates: Partial<HostProfile>): Promise<void> => {
   try {
+    if (!hostId) {
+      throw new Error('Host ID is required');
+    }
+
+    console.log('Updating host profile:', hostId, updates);
+    
     const hostRef = ref(database, `hosts/${hostId}`);
     await update(hostRef, {
       ...updates,
       lastUpdated: Date.now()
     });
+    
+    console.log('Profile updated successfully');
   } catch (error) {
     console.error('Error updating host profile:', error);
-    throw new Error(error instanceof Error ? error.message : 'Failed to update profile');
+    throw new Error(handleError(error, 'profile update'));
   }
 };
 
-// FIXED: Map HostProfile to ProfileData structure
-const mapHostProfileToProfileData = (hostProfile: HostProfile): ProfileData => {
-  const subscriptionStatus = hostProfile.status === 'active' && hostProfile.subscriptionEnd > Date.now() 
-    ? 'active' 
-    : 'expired';
+// Safe mapping with null checks
+const mapHostProfileToProfileData = (hostProfile: HostProfile | null, userEmail?: string): ProfileData => {
+  if (!hostProfile) {
+    // Return default data if profile is null
+    return {
+      username: userEmail?.split('@')[0] || 'Host',
+      email: userEmail || '',
+      organization: '',
+      contactNumber: '',
+      address: '',
+      subscriptionDetails: {
+        plan: 'Tambola Host Premium',
+        startDate: Date.now(),
+        endDate: Date.now() + (30 * 24 * 60 * 60 * 1000), // 30 days from now
+        status: 'active',
+        daysRemaining: 30,
+        features: [
+          'Unlimited game sessions',
+          'Advanced prize configuration',
+          'Player management',
+          'Game analytics',
+          'Export functionality'
+        ]
+      }
+    };
+  }
+
+  const now = Date.now();
+  const subscriptionEnd = hostProfile.subscriptionEnd || now;
+  const daysRemaining = Math.max(0, Math.ceil((subscriptionEnd - now) / (1000 * 60 * 60 * 24)));
+  const subscriptionStatus = hostProfile.status === 'active' && subscriptionEnd > now ? 'active' : 'expired';
 
   return {
-    username: hostProfile.username || '',
+    username: hostProfile.username || 'Host',
+    email: hostProfile.email || '',
     organization: hostProfile.organization || '',
     contactNumber: hostProfile.contactNumber || '',
     address: hostProfile.address || '',
     subscriptionDetails: {
-      plan: 'Tambola Host Premium', // Default plan name
-      startDate: Date.now() - (365 * 24 * 60 * 60 * 1000), // Assume 1 year ago
-      endDate: hostProfile.subscriptionEnd,
+      plan: 'Tambola Host Premium',
+      startDate: now - (365 * 24 * 60 * 60 * 1000), // Assume 1 year ago
+      endDate: subscriptionEnd,
       status: subscriptionStatus,
+      daysRemaining,
       features: [
         'Unlimited game sessions',
         'Advanced prize configuration',
@@ -107,21 +163,28 @@ const mapHostProfileToProfileData = (hostProfile: HostProfile): ProfileData => {
   };
 };
 
-// FIXED: Map ProfileData back to HostProfile updates
+// Safe mapping back to HostProfile updates
 const mapProfileDataToHostProfile = (profileData: Partial<ProfileData>): Partial<HostProfile> => {
   const updates: Partial<HostProfile> = {};
   
-  if (profileData.username !== undefined) updates.username = profileData.username;
-  if (profileData.organization !== undefined) updates.organization = profileData.organization;
-  if (profileData.contactNumber !== undefined) updates.contactNumber = profileData.contactNumber;
-  if (profileData.address !== undefined) updates.address = profileData.address;
+  if (profileData.username !== undefined && profileData.username.trim()) {
+    updates.username = profileData.username.trim();
+  }
+  if (profileData.organization !== undefined) {
+    updates.organization = profileData.organization.trim();
+  }
+  if (profileData.contactNumber !== undefined) {
+    updates.contactNumber = profileData.contactNumber.trim();
+  }
+  if (profileData.address !== undefined) {
+    updates.address = profileData.address.trim();
+  }
   
   return updates;
 };
 
 export const UserProfile: React.FC = () => {
   const { currentUser } = useAuth();
-  const { currentGame, updateGameSettings } = useGame(); // 🔄 Added for phone number sync
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -134,28 +197,6 @@ export const UserProfile: React.FC = () => {
   useEffect(() => {
     loadProfileData();
   }, [currentUser]);
-
-  // 🔄 SYNC: Auto-populate contactNumber from game hostPhone if empty
-  useEffect(() => {
-    if (currentGame?.settings?.hostPhone && 
-        profileData && 
-        (!profileData.contactNumber || profileData.contactNumber === '')) {
-      console.log('🔄 Auto-populating contactNumber from game hostPhone:', currentGame.settings.hostPhone);
-      const updatedProfileData = {
-        ...profileData,
-        contactNumber: currentGame.settings.hostPhone
-      };
-      setProfileData(updatedProfileData);
-      setEditData(updatedProfileData);
-      
-      // Also update the database to persist this sync
-      if (currentUser?.uid) {
-        updateHostProfile(currentUser.uid, { contactNumber: currentGame.settings.hostPhone })
-          .then(() => console.log('✅ Profile contactNumber synced and saved'))
-          .catch(error => console.warn('⚠️ Failed to save synced contactNumber:', error));
-      }
-    }
-  }, [currentGame?.settings?.hostPhone, profileData?.contactNumber, currentUser?.uid]);
 
   const loadProfileData = async () => {
     if (!currentUser?.uid) {
@@ -170,55 +211,39 @@ export const UserProfile: React.FC = () => {
       
       console.log('Loading profile data for user:', currentUser.uid);
       
-      // FIXED: Read from correct path
-      const hostProfile = await readHostProfile(currentUser.uid);
+      // Try to read host profile with error handling
+      let hostProfile: HostProfile | null = null;
       
-      if (hostProfile) {
-        console.log('Host profile found:', hostProfile);
-        
-        // FIXED: Map to expected structure
-        const mappedProfileData = mapHostProfileToProfileData(hostProfile);
-        
-        setProfileData(mappedProfileData);
-        setEditData(mappedProfileData);
-        console.log('Profile data loaded successfully');
-      } else {
-        console.warn('No host profile found, creating default');
-        
-        // FIXED: Create default profile data if none exists
-        const defaultProfile: ProfileData = {
-          username: currentUser.email?.split('@')[0] || 'Host',
-          organization: '',
-          contactNumber: '',
-          address: '',
-          subscriptionDetails: {
-            plan: 'Tambola Host Premium',
-            startDate: Date.now(),
-            endDate: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 year from now
-            status: 'active',
-            features: [
-              'Unlimited game sessions',
-              'Advanced prize configuration',
-              'Player management',
-              'Game analytics',
-              'Export functionality'
-            ]
-          }
-        };
-        
-        setProfileData(defaultProfile);
-        setEditData(defaultProfile);
+      try {
+        hostProfile = await readHostProfile(currentUser.uid);
+      } catch (profileError) {
+        console.warn('Could not load host profile:', profileError);
+        // Continue with null profile - will create default
       }
+      
+      console.log('Host profile loaded:', hostProfile);
+      
+      // Map to display format (handles null profile gracefully)
+      const mappedProfileData = mapHostProfileToProfileData(hostProfile, currentUser.email || undefined);
+      
+      setProfileData(mappedProfileData);
+      setEditData(mappedProfileData);
+      
+      console.log('Profile data set successfully');
+      
     } catch (error) {
-      console.error('Error loading profile:', error);
-      setError(handleApiError(error, 'Failed to load profile data'));
+      console.error('Error in loadProfileData:', error);
+      setError(handleError(error, 'loading profile'));
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleProfileUpdate = async () => {
-    if (!currentUser?.uid || !editData) return;
+    if (!currentUser?.uid || !editData) {
+      setError('Unable to update profile at this time');
+      return;
+    }
 
     setIsUpdating(true);
     setError(null);
@@ -227,36 +252,28 @@ export const UserProfile: React.FC = () => {
     try {
       console.log('Updating profile with data:', editData);
       
-      // FIXED: Map and update only the changed fields
+      // Map and validate updates
       const hostProfileUpdates = mapProfileDataToHostProfile(editData);
+      
+      if (Object.keys(hostProfileUpdates).length === 0) {
+        setError('No valid updates to save');
+        return;
+      }
       
       await updateHostProfile(currentUser.uid, hostProfileUpdates);
 
-      // FIXED: Update local state immediately
+      // Update local state immediately
       const updatedProfile = { ...profileData, ...editData } as ProfileData;
       setProfileData(updatedProfile);
-      
-      // 🔄 SYNC: If contactNumber changed, update game settings hostPhone
-      if (editData.contactNumber && 
-          editData.contactNumber !== profileData?.contactNumber && 
-          currentGame) {
-        try {
-          console.log('🔄 Syncing contactNumber to game hostPhone:', editData.contactNumber);
-          const commandId = updateGameSettings({ hostPhone: editData.contactNumber });
-          console.log('✅ Game hostPhone updated successfully, command:', commandId);
-        } catch (syncError) {
-          console.warn('⚠️ Failed to sync phone to game settings (non-critical):', syncError);
-          // Don't fail the main operation for sync errors
-        }
-      }
       
       setIsEditing(false);
       setSuccessMessage('Profile updated successfully');
       
       console.log('Profile updated successfully');
+      
     } catch (error) {
       console.error('Error updating profile:', error);
-      setError(handleApiError(error, 'Failed to update profile'));
+      setError(handleError(error, 'updating profile'));
     } finally {
       setIsUpdating(false);
     }
@@ -266,7 +283,10 @@ export const UserProfile: React.FC = () => {
     currentPassword: string,
     newPassword: string
   ) => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setError('No user logged in');
+      return;
+    }
 
     setIsUpdating(true);
     setError(null);
@@ -284,14 +304,17 @@ export const UserProfile: React.FC = () => {
       setSuccessMessage('Password updated successfully');
     } catch (error) {
       console.error('Error changing password:', error);
-      setError(handleApiError(error, 'Failed to change password. Please verify your current password.'));
+      setError(handleError(error, 'changing password'));
     } finally {
       setIsUpdating(false);
     }
   };
 
   const handleEmailChange = async (newEmail: string, password: string) => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setError('No user logged in');
+      return;
+    }
 
     setIsUpdating(true);
     setError(null);
@@ -308,13 +331,13 @@ export const UserProfile: React.FC = () => {
       setSuccessMessage('Email updated successfully');
     } catch (error) {
       console.error('Error changing email:', error);
-      setError(handleApiError(error, 'Failed to change email. Please verify your password.'));
+      setError(handleError(error, 'changing email'));
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // FIXED: Show loading state properly
+  // Show loading state
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -326,7 +349,7 @@ export const UserProfile: React.FC = () => {
     );
   }
 
-  // FIXED: Show error state if profile couldn't be loaded
+  // Show error state if profile couldn't be loaded and we have an error
   if (!profileData && error) {
     return (
       <div className="max-w-4xl mx-auto space-y-8">
@@ -355,7 +378,7 @@ export const UserProfile: React.FC = () => {
     );
   }
 
-  // FIXED: Fallback if profileData is still null
+  // Fallback if profileData is still null (shouldn't happen with new mapping)
   if (!profileData) {
     return (
       <div className="max-w-4xl mx-auto space-y-8">
@@ -367,8 +390,8 @@ export const UserProfile: React.FC = () => {
               </svg>
             </div>
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800">Profile Not Found</h3>
-              <p className="text-sm text-yellow-700 mt-2">No profile data available. Please try reloading.</p>
+              <h3 className="text-sm font-medium text-yellow-800">Profile Not Available</h3>
+              <p className="text-sm text-yellow-700 mt-2">Unable to load profile data. Please try reloading.</p>
             </div>
           </div>
           <div className="mt-4">
@@ -383,10 +406,6 @@ export const UserProfile: React.FC = () => {
       </div>
     );
   }
-
-  const daysRemaining = Math.ceil(
-    (profileData.subscriptionDetails.endDate - Date.now()) / (1000 * 60 * 60 * 24)
-  );
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -448,6 +467,22 @@ export const UserProfile: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={profileData.email}
+                disabled={true}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm
+                  bg-gray-100 text-gray-500 sm:text-sm"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Email cannot be changed from this interface
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
                 Organization
               </label>
               <input
@@ -461,6 +496,7 @@ export const UserProfile: React.FC = () => {
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm
                   focus:border-blue-500 focus:ring-blue-500 sm:text-sm
                   disabled:bg-gray-100 disabled:text-gray-500"
+                placeholder="Your organization name"
               />
             </div>
 
@@ -479,14 +515,8 @@ export const UserProfile: React.FC = () => {
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm
                   focus:border-blue-500 focus:ring-blue-500 sm:text-sm
                   disabled:bg-gray-100 disabled:text-gray-500"
+                placeholder="Your contact number"
               />
-              {/* 🔄 Sync indicator */}
-              {currentGame?.settings?.hostPhone && 
-               profileData?.contactNumber === currentGame.settings.hostPhone && (
-                <p className="mt-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200 inline-block">
-                  🎮 Synced with game settings
-                </p>
-              )}
             </div>
 
             <div>
@@ -504,6 +534,7 @@ export const UserProfile: React.FC = () => {
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm
                   focus:border-blue-500 focus:ring-blue-500 sm:text-sm
                   disabled:bg-gray-100 disabled:text-gray-500"
+                placeholder="Your address"
               />
             </div>
           </div>
@@ -514,6 +545,7 @@ export const UserProfile: React.FC = () => {
                 onClick={() => {
                   setIsEditing(false);
                   setEditData(profileData);
+                  setError(null);
                 }}
                 className="px-4 py-2 border border-gray-300 rounded-md
                   text-gray-700 hover:bg-gray-50 focus:outline-none
@@ -569,7 +601,9 @@ export const UserProfile: React.FC = () => {
             sm:gap-4 sm:px-6 rounded-lg">
             <dt className="text-sm font-medium text-gray-500">Time Remaining</dt>
             <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-              {daysRemaining > 0 ? `${daysRemaining} days` : 'Expired'}
+              {profileData.subscriptionDetails.daysRemaining > 0 
+                ? `${profileData.subscriptionDetails.daysRemaining} days` 
+                : 'Expired'}
             </dd>
           </div>
 
@@ -588,12 +622,12 @@ export const UserProfile: React.FC = () => {
 
         <div className="mt-6">
           <button
-            onClick={() => window.location.href = '/subscription/renew'}
+            onClick={() => window.location.href = '/subscription'}
             className="w-full px-4 py-2 bg-green-600 text-white rounded-md
               hover:bg-green-700 focus:outline-none focus:ring-2
               focus:ring-green-500 focus:ring-offset-2"
           >
-            Renew Subscription
+            View Subscription Details
           </button>
         </div>
       </div>
@@ -660,6 +694,10 @@ const PasswordChangeForm: React.FC<PasswordChangeFormProps> = ({
 
     try {
       await onSubmit(currentPassword, newPassword);
+      // Reset form on success
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
     } catch (error) {
       setError('Failed to change password');
     }
