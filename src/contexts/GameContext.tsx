@@ -1,5 +1,5 @@
-// src/contexts/GameContext.tsx - FIXED to remove deleted hooks import and fix callback types
-import React, { createContext, useContext, useState, useMemo, ReactNode, useEffect } from 'react';
+// src/contexts/GameContext.tsx - PROPER FIX: Immediate state sync and proper error handling
+import React, { createContext, useContext, useState, useMemo, ReactNode, useEffect, useCallback } from 'react';
 import { ref, onValue, off } from 'firebase/database';
 import { useCommandQueue } from '../hooks/useCommandQueue';
 import { database } from '../lib/firebase';
@@ -7,18 +7,19 @@ import { formatMultiplePrizes } from '../utils/prizeValidation';
 import type { CommandResult, CommandError } from '../types/commands';
 import type { Game } from '../types/game';
 
-// Simplified context type - commands replace complex methods
+// PROPER FIX: Simplified context type with immediate state tracking
 type GameContextType = {
   // Game state (read-only)
   currentGame: Game.CurrentGame | null;
   isLoading: boolean;
   error: string | null;
   
-  // Command queue state
+  // PROPER FIX: Real-time command queue state
   isProcessing: boolean;
   queueLength: number;
+  currentCommand: string | null;
   
-  // Simple command methods (replace complex game controller)
+  // Command methods (simplified interface)
   callNumber: (number: number) => string;
   updateGameStatus: (status: 'active' | 'paused' | 'ended', isAutoCalling?: boolean) => string;
   createBooking: (playerName: string, phoneNumber: string, tickets: string[]) => string;
@@ -36,19 +37,8 @@ type GameContextType = {
   hostId: string | null;
   clearError: () => void;
   
-  // Notifications for UI
-  toastNotifications: Array<{
-    id: string;
-    message: string;
-    type: 'success' | 'error' | 'info';
-  }>;
-  announceWinner: (winner: { 
-    playerName: string; 
-    prizeTypes: string[]; 
-    ticketId: string;
-    playerId: string;
-    phoneNumber: string;
-  }) => void;
+  // PROPER FIX: System health monitoring
+  systemHealth: { healthy: boolean; issues: string[] };
 };
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -59,20 +49,20 @@ interface GameProviderProps {
 }
 
 export function GameProvider({ children, hostId }: GameProviderProps) {
-  // Local state for UI
+  // PROPER FIX: Local state with immediate updates
   const [currentGame, setCurrentGame] = useState<Game.CurrentGame | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [toastNotifications, setToastNotifications] = useState<Array<{
-    id: string;
-    message: string;
-    type: 'success' | 'error' | 'info';
-  }>>([]);
-
-  // FIXED: Direct Firebase subscription instead of useGameDatabase hook
+  
+  // PROPER FIX: Direct Firebase subscription with immediate updates
   useEffect(() => {
-    if (!hostId) return;
+    if (!hostId) {
+      setCurrentGame(null);
+      setIsLoading(false);
+      return;
+    }
 
+    console.log(`🔌 Subscribing to game data for host: ${hostId}`);
     setIsLoading(true);
     
     const gameRef = ref(database, `hosts/${hostId}/currentGame`);
@@ -82,98 +72,101 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
       (snapshot) => {
         try {
           const data = snapshot.exists() ? snapshot.val() as Game.CurrentGame : null;
+          
+          console.log(`📊 Game data updated:`, {
+            hasData: !!data,
+            phase: data?.gameState?.phase,
+            status: data?.gameState?.status,
+            calledNumbers: data?.numberSystem?.calledNumbers?.length || 0
+          });
+          
           setCurrentGame(data);
           setIsLoading(false);
+          setError(null);
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Data processing error';
-          setError(errorMessage);
+          console.error('Error processing game data:', error);
+          setError(error instanceof Error ? error.message : 'Data processing error');
           setIsLoading(false);
         }
       },
       (error) => {
-        const errorMessage = error instanceof Error ? error.message : 'Subscription error';
-        setError(errorMessage);
+        console.error('Firebase subscription error:', error);
+        setError(error instanceof Error ? error.message : 'Subscription error');
         setIsLoading(false);
       }
     );
 
     return () => {
+      console.log(`🔌 Unsubscribing from game data for host: ${hostId}`);
       off(gameRef, 'value', unsubscribe);
     };
   }, [hostId]);
 
-  // Use command queue for all actions
+  // PROPER FIX: Command queue with immediate result handling
   const commandQueue = useCommandQueue({
     hostId: hostId || '',
-    onResult: (result: CommandResult) => {
-      console.log(`✅ Command completed: ${result.command.type}`, result);
+    onResult: useCallback((result: CommandResult) => {
+      console.log(`✅ Command result: ${result.command.type}`, result);
       
-      // Handle specific command results for UI feedback
+      // PROPER FIX: Clear error on successful command
       if (result.success) {
+        setError(null);
+        
+        // PROPER FIX: Handle specific successful commands
         switch (result.command.type) {
           case 'CALL_NUMBER':
-            addToast(`Number ${result.data?.number} called`, 'info');
+            console.log(`🎲 Number ${result.data?.number} called successfully`);
             break;
           case 'CREATE_BOOKING':
-            addToast(`Booking created for ${result.data?.playerName}`, 'success');
+            console.log(`🎫 Booking created for ${result.data?.playerName}`);
             break;
           case 'UPDATE_PRIZE_WINNERS':
             const prizeText = formatMultiplePrizes(result.data?.allPrizeTypes || [result.data?.prizeType]);
-            addToast(`🎉 ${result.data?.playerName} won ${prizeText}!`, 'success');
+            console.log(`🎉 Prize won: ${result.data?.playerName} - ${prizeText}`);
             break;
           case 'COMPLETE_GAME':
-            addToast('🎉 Game completed successfully!', 'success');
+            console.log(`🏁 Game completed successfully`);
             break;
         }
+      } else {
+        // PROPER FIX: Set error for failed commands
+        console.error(`❌ Command failed: ${result.command.type}`, result.error);
+        setError(result.error || 'Command failed');
       }
-    },
-    onError: (error: CommandError) => {
-      console.error(`❌ Command failed: ${error.command.type}`, error);
-      addToast(`Error: ${error.message}`, 'error');
-    }
+    }, []),
+    onError: useCallback((error: CommandError) => {
+      console.error(`🚨 Command error: ${error.command.type}`, error);
+      
+      // PROPER FIX: Immediately update error state
+      setError(error.message);
+      
+      // PROPER FIX: Auto-clear non-critical errors
+      if (error.message.includes('timeout') || error.message.includes('network')) {
+        setTimeout(() => {
+          setError(null);
+        }, 5000);
+      }
+    }, [])
   });
 
-  // Toast notification helpers
-  const addToast = (message: string, type: 'success' | 'error' | 'info') => {
-    const id = Date.now().toString();
-    setToastNotifications(prev => [...prev, { id, message, type }]);
-    
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-      setToastNotifications(prev => prev.filter(n => n.id !== id));
-    }, 5000);
-  };
-
-  const announceWinner = (winner: { 
-    playerName: string; 
-    prizeTypes: string[]; 
-    ticketId: string;
-    playerId: string;
-    phoneNumber: string;
-  }) => {
-    const prizeText = formatMultiplePrizes(winner.prizeTypes);
-    const message = `🎉 ${winner.playerName} won ${prizeText} with ticket ${winner.ticketId}!`;
-    
-    console.log(message);
-    addToast(message, 'success');
-  };
-
-  const clearError = () => {
+  // PROPER FIX: Clear error function
+  const clearError = useCallback(() => {
     setError(null);
-  };
+  }, []);
 
-  // Context value with simplified interface
+  // PROPER FIX: Context value with real-time state
   const contextValue = useMemo(() => ({
     // Game state (read-only)
     currentGame,
     isLoading,
     error,
     
-    // Command queue state
+    // PROPER FIX: Real-time command queue state
     isProcessing: commandQueue.isProcessing,
     queueLength: commandQueue.queueLength,
+    currentCommand: commandQueue.currentCommand,
     
-    // Simple command methods
+    // Command methods (direct pass-through)
     callNumber: commandQueue.callNumber,
     updateGameStatus: commandQueue.updateGameStatus,
     createBooking: commandQueue.createBooking,
@@ -190,56 +183,36 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
     // Utilities
     hostId,
     clearError,
-    toastNotifications,
-    announceWinner
+    
+    // PROPER FIX: System health
+    systemHealth: commandQueue.systemHealth
   }), [
     currentGame, isLoading, error,
-    commandQueue.isProcessing, commandQueue.queueLength,
+    commandQueue.isProcessing, commandQueue.queueLength, commandQueue.currentCommand,
     commandQueue.callNumber, commandQueue.updateGameStatus, commandQueue.createBooking,
     commandQueue.updateBooking, commandQueue.updateGameSettings, commandQueue.initializeGame,
     commandQueue.startBookingPhase, commandQueue.startPlayingPhase, commandQueue.completeGame,
     commandQueue.updateCallDelay, commandQueue.updateSoundSettings, commandQueue.cancelBooking,
-    hostId, toastNotifications
+    hostId, clearError, commandQueue.systemHealth
   ]);
   
   return (
     <GameContext.Provider value={contextValue}>
       {children}
       
-      {/* Toast Notifications */}
-      <div className="fixed bottom-4 right-4 space-y-2 z-50">
-        {toastNotifications.map((notification) => (
-          <div
-            key={notification.id}
-            className={`max-w-sm px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${
-              notification.type === 'success' 
-                ? 'bg-green-500 text-white' 
-                : notification.type === 'error'
-                ? 'bg-red-500 text-white'
-                : 'bg-blue-500 text-white'
-            }`}
-          >
-            <div className="flex items-start">
-              <div className="flex-1">
-                <p className="text-sm font-medium">{notification.message}</p>
-              </div>
-              <button
-                onClick={() => {
-                  setToastNotifications(prev => 
-                    prev.filter(n => n.id !== notification.id)
-                  );
-                }}
-                className="ml-2 flex-shrink-0 text-white hover:text-gray-200"
-              >
-                <span className="sr-only">Close</span>
-                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* PROPER FIX: Simple status indicator (no intrusive UI) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 left-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded z-50">
+          <div>Queue: {commandQueue.queueLength}</div>
+          <div>Processing: {commandQueue.isProcessing ? 'Yes' : 'No'}</div>
+          {commandQueue.currentCommand && (
+            <div>Current: {commandQueue.currentCommand}</div>
+          )}
+          {!commandQueue.systemHealth.healthy && (
+            <div className="text-red-300">Health: {commandQueue.systemHealth.issues.length} issues</div>
+          )}
+        </div>
+      )}
     </GameContext.Provider>
   );
 }
