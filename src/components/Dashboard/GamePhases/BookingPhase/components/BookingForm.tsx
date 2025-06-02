@@ -1,3 +1,6 @@
+// src/components/Dashboard/GamePhases/BookingPhase/components/BookingForm.tsx - CLEAN VERSION
+// Removed instructional content
+
 import { useState, useEffect } from 'react';
 
 interface BookingFormProps {
