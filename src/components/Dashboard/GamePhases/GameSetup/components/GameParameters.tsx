@@ -1,6 +1,9 @@
+// src/components/Dashboard/GamePhases/GameSetup/components/GameParameters.tsx - CLEAN VERSION
+// Removed all instructional content and recommendations
+
 import { useState, useCallback, useEffect } from 'react';
 import { Game } from '../../../../../types/game';
-import { Clock, FastForward, Zap, Info } from 'lucide-react';
+import { Clock, FastForward, Zap } from 'lucide-react';
 
 interface GameParametersProps {
   callDelay: number;
@@ -11,31 +14,25 @@ interface GameParametersProps {
 const GAME_PACE_PRESETS = {
   beginner: {
     callDelay: 8,
-    label: 'Beginner (8s)',
-    description: 'Slow pace for new players'
+    label: 'Beginner (8s)'
   },
   standard: {
     callDelay: 5,
-    label: 'Standard (5s)',
-    description: 'Balanced pace for most games'
+    label: 'Standard (5s)'
   },
   advanced: {
     callDelay: 3,
-    label: 'Advanced (3s)',
-    description: 'Fast pace for experienced players'
+    label: 'Advanced (3s)'
   }
 };
 
 function GameParameters({ callDelay, onUpdate }: GameParametersProps) {
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [previewDelay, setPreviewDelay] = useState(callDelay);
   const [activePacePreset, setActivePacePreset] = useState<string | null>(null);
 
-  // Determine active preset on load and when callDelay changes
   useEffect(() => {
     setPreviewDelay(callDelay);
     
-    // Check if current delay matches any preset
     const matchingPreset = Object.entries(GAME_PACE_PRESETS).find(
       ([_, preset]) => preset.callDelay === callDelay
     );
@@ -45,8 +42,6 @@ function GameParameters({ callDelay, onUpdate }: GameParametersProps) {
 
   const handleDelayChange = useCallback((value: number) => {
     setPreviewDelay(value);
-    
-    // Clear active preset since user is manually adjusting
     setActivePacePreset(null);
   }, []);
 
@@ -84,7 +79,6 @@ function GameParameters({ callDelay, onUpdate }: GameParametersProps) {
       </div>
 
       <div className="mt-6 space-y-6">
-        {/* Preset pace buttons */}
         <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {Object.entries(GAME_PACE_PRESETS).map(([key, preset]) => (
             <button
@@ -94,7 +88,6 @@ function GameParameters({ callDelay, onUpdate }: GameParametersProps) {
                 ${activePacePreset === key 
                   ? 'bg-blue-100 text-blue-800 border-2 border-blue-300' 
                   : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'}`}
-              title={preset.description}
             >
               {key === 'beginner' && <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />}
               {key === 'standard' && <FastForward className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />}
@@ -140,37 +133,6 @@ function GameParameters({ callDelay, onUpdate }: GameParametersProps) {
             </div>
           </div>
         </div>
-
-        <div className="flex items-center">
-          <button
-            type="button"
-            onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-            className="text-sm text-blue-600 hover:text-blue-700 focus:outline-none 
-              focus:underline flex items-center"
-          >
-            <Info className="w-4 h-4 mr-1" />
-            {showAdvancedSettings ? 'Hide' : 'Show'} recommendations
-          </button>
-        </div>
-
-        {showAdvancedSettings && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg space-y-3">
-            <h4 className="text-sm font-medium text-gray-900">
-              Recommended Settings
-            </h4>
-            <div className="space-y-2 text-sm text-gray-600">
-              <p>• Beginner Games: 7-10 seconds between calls</p>
-              <p>• Standard Games: 5-6 seconds between calls</p>
-              <p>• Advanced Games: 3-4 seconds between calls</p>
-            </div>
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <p className="text-sm text-gray-500">
-                Note: These settings affect automatic number calling. In manual mode, 
-                you can call numbers at your own pace.
-              </p>
-            </div>
-          </div>
-        )}
       </div>
     </section>
   );
