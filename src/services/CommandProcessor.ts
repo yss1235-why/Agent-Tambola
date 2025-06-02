@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - PROPER FIX: Abort signal support and proper async handling
+// src/services/CommandProcessor.ts - FINAL FIX: Complete type safety
 import { GameCommand, CommandResult, CommandContext, CommandValidationResult } from '../types/commands';
 import { GameDatabaseService } from './GameDatabaseService';
 import { validateAllPrizes, ValidationContext } from '../utils/prizeValidation';
@@ -11,7 +11,6 @@ export class CommandProcessor {
   private databaseService: GameDatabaseService;
   private audioManager: AudioManager;
   
-  // PROPER FIX: Removed caching to prevent stale data issues
   private constructor() {
     this.databaseService = GameDatabaseService.getInstance();
     this.audioManager = AudioManager.getInstance();
@@ -25,7 +24,7 @@ export class CommandProcessor {
   }
 
   /**
-   * PROPER FIX: Execute with abort signal support
+   * Execute with abort signal support
    */
   public async execute(command: GameCommand, abortSignal?: AbortSignal): Promise<CommandResult> {
     const startTime = Date.now();
@@ -33,35 +32,29 @@ export class CommandProcessor {
     try {
       console.log(`🎯 Executing: ${command.type}`);
       
-      // PROPER FIX: Check abort signal before starting
       if (abortSignal?.aborted) {
         throw new Error(`Command ${command.type} was aborted before execution`);
       }
       
-      // PROPER FIX: Get fresh game data (no caching)
       const context: CommandContext = {
         hostId: command.hostId,
         currentGame: await this.getCurrentGameFresh(command.hostId, abortSignal),
         timestamp: command.timestamp
       };
       
-      // PROPER FIX: Check abort signal after data fetch
       if (abortSignal?.aborted) {
         throw new Error(`Command ${command.type} was aborted during data fetch`);
       }
       
-      // Validate command
       const validation = this.validateCommand(command, context);
       if (!validation.isValid) {
         return this.createErrorResult(command, validation.error || 'Command validation failed');
       }
       
-      // PROPER FIX: Check abort signal before execution
       if (abortSignal?.aborted) {
         throw new Error(`Command ${command.type} was aborted before processing`);
       }
       
-      // Route to appropriate executor with abort signal
       let result: CommandResult;
       
       switch (command.type) {
@@ -117,7 +110,6 @@ export class CommandProcessor {
       const executionTime = Date.now() - startTime;
       console.error(`❌ Command failed: ${command.type} (${executionTime}ms)`, error);
       
-      // PROPER FIX: Handle abort errors specifically
       if (error instanceof Error && error.name === 'AbortError') {
         return this.createErrorResult(command, `Command ${command.type} was cancelled`);
       }
@@ -130,10 +122,9 @@ export class CommandProcessor {
   }
   
   /**
-   * PROPER FIX: Get fresh game data without caching
+   * Get fresh game data without caching
    */
   private async getCurrentGameFresh(hostId: string, abortSignal?: AbortSignal): Promise<Game.CurrentGame | null> {
-    // PROPER FIX: Check abort before database call
     if (abortSignal?.aborted) {
       throw new Error('Operation aborted during game data fetch');
     }
@@ -147,7 +138,7 @@ export class CommandProcessor {
   }
   
   /**
-   * PROPER FIX: Generate number with better duplicate prevention
+   * Generate number with better duplicate prevention
    */
   public static generateAvailableNumber(calledNumbers: number[]): number | null {
     const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
@@ -166,7 +157,7 @@ export class CommandProcessor {
   }
   
   /**
-   * PROPER FIX: Get available numbers for UI
+   * Get available numbers for UI
    */
   public static getAvailableNumbers(calledNumbers: number[]): number[] {
     const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
@@ -174,7 +165,7 @@ export class CommandProcessor {
   }
   
   /**
-   * PROPER FIX: Execute call number with abort signal
+   * Execute call number with abort signal
    */
   private async executeCallNumber(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     const { number } = command.payload;
@@ -184,14 +175,12 @@ export class CommandProcessor {
       throw new Error('No active game found');
     }
     
-    // PROPER FIX: Check abort before database operations
     if (abortSignal?.aborted) {
       throw new Error('Call number operation was aborted');
     }
     
     const calledNumbers = currentGame.numberSystem?.calledNumbers || [];
     
-    // Double-check duplicate
     if (calledNumbers.includes(number)) {
       throw new Error(`Number ${number} has already been called`);
     }
@@ -200,7 +189,6 @@ export class CommandProcessor {
     
     console.log(`🎲 Calling number ${number} (${newCalledNumbers.length}/90)`);
     
-    // PROPER FIX: Database update with abort check
     if (abortSignal?.aborted) {
       throw new Error('Call number operation was aborted before database update');
     }
@@ -212,7 +200,6 @@ export class CommandProcessor {
       }
     });
     
-    // PROPER FIX: Audio with error handling (don't fail command for audio)
     if (currentGame.gameState?.soundEnabled) {
       try {
         await this.audioManager.announceNumber(number);
@@ -221,10 +208,8 @@ export class CommandProcessor {
       }
     }
     
-    // PROPER FIX: Prize check in background (don't block command)
     this.checkForPrizesAsync(hostId, currentGame, newCalledNumbers);
     
-    // PROPER FIX: Auto-end game if all numbers called
     if (newCalledNumbers.length >= 90) {
       console.log('🏁 All numbers called, scheduling auto-end');
       setTimeout(async () => {
@@ -249,21 +234,18 @@ export class CommandProcessor {
   }
   
   /**
-   * PROPER FIX: Prize checking in background (non-blocking)
+   * Prize checking in background (non-blocking)
    */
   private checkForPrizesAsync(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): void {
-    // Run in background, don't await
     setImmediate(async () => {
       try {
         await this.checkForPrizes(hostId, currentGame, calledNumbers);
       } catch (error) {
         console.error('Background prize check failed:', error);
-        // Don't throw - this is background operation
       }
     });
   }
   
-  // PROPER FIX: All other execute methods with abort signal support
   private async executeUpdateGameStatus(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     if (abortSignal?.aborted) throw new Error('Update game status was aborted');
     
@@ -339,7 +321,6 @@ export class CommandProcessor {
     });
   }
   
-  // PROPER FIX: Continue with other methods (keeping them shorter for brevity)
   private async executeUpdateBooking(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     if (abortSignal?.aborted) throw new Error('Update booking was aborted');
     
@@ -374,7 +355,6 @@ export class CommandProcessor {
     return this.createSuccessResult(command, { ticketId, updatedBooking });
   }
   
-  // PROPER FIX: Keep other methods with abort signal support but shorter
   private async executeUpdatePrizeWinners(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     if (abortSignal?.aborted) throw new Error('Update prize winners was aborted');
     
@@ -391,7 +371,6 @@ export class CommandProcessor {
     
     await this.databaseService.updateGameState(hostId, { winners: updatedWinners });
     
-    // Audio feedback (non-blocking)
     try {
       await this.audioManager.playPrizeWinEffect(prizeType);
     } catch (error) {
@@ -608,7 +587,6 @@ export class CommandProcessor {
     });
   }
   
-  // PROPER FIX: Validation methods (unchanged but with abort signal checks)
   private validateCommand(command: GameCommand, context: CommandContext): CommandValidationResult {
     if (!command.hostId) {
       return { isValid: false, error: 'Host ID is required' };
@@ -705,9 +683,10 @@ export class CommandProcessor {
     return { isValid: true };
   }
   
-  // PROPER FIX: Prize checking (keep existing logic but make it non-blocking)
+  /**
+   * FINAL FIX: Prize checking with complete type safety
+   */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
-    // Keep existing prize validation logic but make it fail-safe
     try {
       const tickets = currentGame.activeTickets?.tickets || {};
       const bookings = currentGame.activeTickets?.bookings || {};
@@ -729,12 +708,13 @@ export class CommandProcessor {
       const validationResults = validateAllPrizes(context);
       
       if (validationResults.length > 0) {
-        const winnersUpdate: Partial<Game.Winners> = {};
+        // FINAL FIX: Complete type safety for winners update
+        const winnersUpdate: Record<keyof Game.Winners, string[]> = {} as Record<keyof Game.Winners, string[]>;
         let hasNewWinners = false;
         
         for (const result of validationResults) {
           if (result?.isWinner && Array.isArray(result.winningTickets) && result.winningTickets.length > 0) {
-            const prizeType = result.prizeType as keyof Game.Winners;
+            const prizeType = result.prizeType;
             const currentPrizeWinners = currentWinners[prizeType] || [];
             const newWinners = result.winningTickets.filter(ticketId => !currentPrizeWinners.includes(ticketId));
             
@@ -746,7 +726,13 @@ export class CommandProcessor {
         }
         
         if (hasNewWinners && Object.keys(winnersUpdate).length > 0) {
-          const updatedWinners = { ...currentWinners, ...winnersUpdate };
+          const updatedWinners: Game.Winners = { ...currentWinners };
+          
+          // FINAL FIX: Type-safe assignment
+          (Object.keys(winnersUpdate) as Array<keyof Game.Winners>).forEach(prizeType => {
+            updatedWinners[prizeType] = winnersUpdate[prizeType];
+          });
+          
           await this.databaseService.updateGameState(hostId, { winners: updatedWinners });
           
           // Check if all active prizes won
@@ -773,7 +759,6 @@ export class CommandProcessor {
     }
   }
   
-  // Helper methods
   private createSuccessResult(command: GameCommand, data?: any): CommandResult {
     return {
       success: true,
