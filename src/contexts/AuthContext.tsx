@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.tsx - FIXED TypeScript compilation errors
+// src/contexts/AuthContext.tsx - FIXED: Updated HostProfile interface
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { 
   User, 
@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { LoadingSpinner } from '@components';
 import { app, database } from '@lib/firebase';
 
+// FIXED: Updated interface with optional fields used across the application
 interface HostProfile {
   email: string;
   lastLogin: number;
@@ -20,6 +21,10 @@ interface HostProfile {
   status: 'active' | 'inactive';
   subscriptionEnd: number;
   username: string;
+  // Optional fields that might exist
+  organization?: string;
+  contactNumber?: string;
+  address?: string;
 }
 
 interface AuthState {
@@ -46,12 +51,12 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-// FIXED: Simple Firebase utilities with proper generic syntax
+// Simple Firebase utilities with proper generic syntax
 type ReadDataResult<T> = { success: boolean; data?: T; error?: string };
 
-const readData = async function<T>(hostId: string, path: string): Promise<ReadDataResult<T>> {
+const readData = async function<T>(hostId: string, path: string = ''): Promise<ReadDataResult<T>> {
   try {
-    const dataRef = ref(database, `hosts/${hostId}/${path}`);
+    const dataRef = ref(database, path ? `hosts/${hostId}/${path}` : `hosts/${hostId}`);
     const snapshot = await get(dataRef);
     
     if (snapshot.exists()) {
@@ -70,7 +75,10 @@ const readData = async function<T>(hostId: string, path: string): Promise<ReadDa
 const updateData = async (hostId: string, updates: any): Promise<{ success: boolean; error?: string }> => {
   try {
     const hostRef = ref(database, `hosts/${hostId}`);
-    await update(hostRef, updates);
+    await update(hostRef, {
+      ...updates,
+      lastUpdated: Date.now()
+    });
     return { success: true };
   } catch (error) {
     return { 
@@ -103,7 +111,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const result = await readData<HostProfile>(user.uid, '');
+          const result = await readData<HostProfile>(user.uid);
           
           if (result.success && result.data) {
             const profile = result.data;
@@ -172,10 +180,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
-      const profileResult = await readData<HostProfile>(
-        userCredential.user.uid, 
-        ''
-      );
+      const profileResult = await readData<HostProfile>(userCredential.user.uid);
       
       if (!profileResult.success || !profileResult.data) {
         await firebaseSignOut(auth);
