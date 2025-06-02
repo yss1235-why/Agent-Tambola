@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - FIXED: Browser compatibility (no setImmediate)
+// src/services/CommandProcessor.ts - UPDATED with Return to Setup Command
 import { GameCommand, CommandResult, CommandContext, CommandValidationResult } from '../types/commands';
 import { GameDatabaseService } from './GameDatabaseService';
 import { validateAllPrizes, ValidationContext } from '../utils/prizeValidation';
@@ -97,6 +97,9 @@ export class CommandProcessor {
         case 'CANCEL_BOOKING':
           result = await this.executeCancelBooking(command, context, abortSignal);
           break;
+        case 'RETURN_TO_SETUP': // NEW: Handle return to setup command
+          result = await this.executeReturnToSetup(command, context, abortSignal);
+          break;
         default:
           throw new Error(`Unknown command type: ${(command as any).type}`);
       }
@@ -162,6 +165,91 @@ export class CommandProcessor {
   public static getAvailableNumbers(calledNumbers: number[]): number[] {
     const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
     return allNumbers.filter(num => !calledNumbers.includes(num));
+  }
+  
+  /**
+   * NEW: Execute return to setup command
+   */
+  private async executeReturnToSetup(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
+    if (abortSignal?.aborted) throw new Error('Return to setup was aborted');
+    
+    const { clearBookings = true } = command.payload;
+    const { hostId, currentGame } = context;
+    
+    if (!currentGame) {
+      throw new Error('No active game found');
+    }
+    
+    console.log(`🔄 Returning to setup phase (clearBookings: ${clearBookings})`);
+    
+    // Prepare the batch update data
+    const batchUpdateData: any = {
+      gameState: {
+        phase: 1 as const,  // Setup phase
+        status: 'setup' as const,  // Setup status
+        isAutoCalling: false,
+        soundEnabled: currentGame.gameState?.soundEnabled || true,
+        winners: {
+          quickFive: [], topLine: [], middleLine: [], bottomLine: [],
+          corners: [], starCorners: [], halfSheet: [], fullSheet: [],
+          fullHouse: [], secondFullHouse: []
+        },
+        allPrizesWon: false
+      },
+      // Reset number system
+      numberSystem: {
+        callDelay: currentGame.settings?.callDelay || 5,
+        currentNumber: null,
+        calledNumbers: [],
+        queue: []
+      }
+    };
+    
+    // Conditionally clear bookings and related data
+    if (clearBookings) {
+      // Clear all bookings
+      batchUpdateData.bookings = {};
+      
+      // Reset tickets to available (keep the ticket data but change status)
+      if (currentGame.activeTickets?.tickets) {
+        batchUpdateData.tickets = Object.fromEntries(
+          Object.keys(currentGame.activeTickets.tickets).map(ticketId => [
+            ticketId, 
+            { status: 'available' }
+          ])
+        );
+      }
+      
+      // Reset booking metrics
+      batchUpdateData.metrics = {
+        startTime: Date.now(),
+        lastBookingTime: Date.now(),
+        totalBookings: 0,
+        totalPlayers: 0
+      };
+      
+      // Clear players
+      batchUpdateData.players = {};
+      
+      console.log(`🧹 Clearing ${Object.keys(currentGame.activeTickets?.bookings || {}).length} bookings`);
+    }
+    
+    // Execute the batch update
+    await this.databaseService.batchUpdateGameData(hostId, batchUpdateData);
+    
+    const message = clearBookings 
+      ? 'Successfully returned to setup phase. All bookings have been cleared.'
+      : 'Successfully returned to setup phase. Existing bookings preserved.';
+    
+    console.log(`✅ ${message}`);
+    
+    return this.createSuccessResult(command, {
+      phase: 1,
+      status: 'setup',
+      clearBookings,
+      bookingsCleared: clearBookings ? Object.keys(currentGame.activeTickets?.bookings || {}).length : 0,
+      message
+    });
   }
   
   /**
@@ -234,7 +322,7 @@ export class CommandProcessor {
   }
   
   /**
-   * FIXED: Prize checking in background (browser-compatible)
+   * Prize checking in background (browser-compatible)
    */
   private checkForPrizesAsync(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): void {
     setTimeout(async () => {
@@ -355,7 +443,7 @@ export class CommandProcessor {
     return this.createSuccessResult(command, { ticketId, updatedBooking });
   }
   
-  // FIXED: Type-safe prize winners update
+  // Type-safe prize winners update
   private async executeUpdatePrizeWinners(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     if (abortSignal?.aborted) throw new Error('Update prize winners was aborted');
     
@@ -364,7 +452,6 @@ export class CommandProcessor {
     
     if (!currentGame) throw new Error('No active game found');
     
-    // FIXED: Ensure prizeType is a valid key of Game.Winners
     const validPrizeTypes: Array<keyof Game.Winners> = [
       'quickFive', 'topLine', 'middleLine', 'bottomLine', 'corners', 
       'starCorners', 'halfSheet', 'fullSheet', 'fullHouse', 'secondFullHouse'
@@ -380,7 +467,6 @@ export class CommandProcessor {
       fullHouse: [], secondFullHouse: []
     };
     
-    // FIXED: Type-safe access to winners
     const prizeKey = prizeType as keyof Game.Winners;
     const existingWinners = currentWinners[prizeKey] || [];
     
@@ -623,6 +709,8 @@ export class CommandProcessor {
         return this.validateCreateBooking(command, context);
       case 'UPDATE_BOOKING':
         return this.validateUpdateBooking(command, context);
+      case 'RETURN_TO_SETUP': // NEW: Validate return to setup command
+        return this.validateReturnToSetup(command, context);
       default:
         return { isValid: true };
     }
@@ -702,9 +790,28 @@ export class CommandProcessor {
     
     return { isValid: true };
   }
+
+  // NEW: Validate return to setup command
+  private validateReturnToSetup(command: any, context: CommandContext): CommandValidationResult {
+    if (!context.currentGame) {
+      return { isValid: false, error: 'No active game found' };
+    }
+    
+    const currentPhase = context.currentGame.gameState?.phase;
+    
+    // Only allow returning to setup from booking phase (phase 2)
+    if (currentPhase !== 2) {
+      return { 
+        isValid: false, 
+        error: `Cannot return to setup from phase ${currentPhase}. Only allowed from booking phase.`
+      };
+    }
+    
+    return { isValid: true };
+  }
   
   /**
-   * FIXED: Type-safe prize checking with proper Winners access
+   * Type-safe prize checking with proper Winners access
    */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
     try {
@@ -736,7 +843,6 @@ export class CommandProcessor {
       const validationResults = validateAllPrizes(context);
       
       if (validationResults.length > 0) {
-        // FIXED: Complete type safety for winners update
         const winnersUpdate: Partial<Game.Winners> = {};
         let hasNewWinners = false;
         
@@ -744,7 +850,6 @@ export class CommandProcessor {
           if (result?.isWinner && Array.isArray(result.winningTickets) && result.winningTickets.length > 0) {
             const prizeType = result.prizeType;
             
-            // FIXED: Validate prizeType is a valid key
             const validPrizeTypes: Array<keyof Game.Winners> = [
               'quickFive', 'topLine', 'middleLine', 'bottomLine', 'corners', 
               'starCorners', 'halfSheet', 'fullSheet', 'fullHouse', 'secondFullHouse'
@@ -768,7 +873,6 @@ export class CommandProcessor {
         if (hasNewWinners && Object.keys(winnersUpdate).length > 0) {
           const updatedWinners: Game.Winners = { ...currentWinners };
           
-          // FIXED: Type-safe assignment with proper key validation
           (Object.keys(winnersUpdate) as Array<keyof Game.Winners>).forEach(prizeType => {
             const newWinnersList = winnersUpdate[prizeType];
             if (newWinnersList && Array.isArray(newWinnersList)) {
@@ -778,7 +882,6 @@ export class CommandProcessor {
           
           await this.databaseService.updateGameState(hostId, { winners: updatedWinners });
           
-          // Check if all active prizes won
           const allActivePrizesWon = (Object.keys(activePrizes) as Array<keyof Game.Settings['prizes']>)
             .filter(prizeKey => activePrizes[prizeKey] === true)
             .every(prizeKey => {
