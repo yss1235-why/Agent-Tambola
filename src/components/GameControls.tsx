@@ -1,5 +1,5 @@
-// src/components/GameControls.tsx - UPDATED to use Command Queue Pattern
-// Simplified controls that send commands instead of complex operations
+// src/components/GameControls.tsx - CLEAN VERSION
+// Removed instructional content
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { Play, Pause, StopCircle, Volume2, VolumeX } from 'lucide-react';
@@ -9,10 +9,10 @@ interface GameControlsProps {
   gameStatus: 'active' | 'paused';
   soundEnabled: boolean;
   delaySeconds: number;
-  onStatusChange: (status: 'active' | 'paused') => void; // ADDED: Missing prop
+  onStatusChange: (status: 'active' | 'paused') => void;
   onSoundToggle: () => void;
   onDelayChange: (delay: number) => void;
-  onGameEnd?: () => void; // Optional callback for UI navigation
+  onGameEnd?: () => void;
   disableControls?: boolean;
 }
 
@@ -20,13 +20,12 @@ function GameControls({
   gameStatus,
   soundEnabled,
   delaySeconds,
-  onStatusChange, // ADDED: Now accepting this prop
+  onStatusChange,
   onSoundToggle,
   onDelayChange,
   onGameEnd,
   disableControls = false
 }: GameControlsProps) {
-  // Get command methods from context
   const { 
     updateGameStatus, 
     updateCallDelay, 
@@ -35,7 +34,6 @@ function GameControls({
     isProcessing 
   } = useGame();
 
-  // Local UI state for immediate feedback
   const [localGameStatus, setLocalGameStatus] = useState(gameStatus);
   const [localSoundEnabled, setLocalSoundEnabled] = useState(soundEnabled);
   const [showEndGameConfirm, setShowEndGameConfirm] = useState(false);
@@ -43,7 +41,6 @@ function GameControls({
   const [tempDelay, setTempDelay] = useState<number | string>(delaySeconds);
   const [commandInProgress, setCommandInProgress] = useState<string | null>(null);
 
-  // Sync with props but allow optimistic updates
   useEffect(() => {
     if (!commandInProgress) {
       setLocalGameStatus(gameStatus);
@@ -60,79 +57,52 @@ function GameControls({
     setTempDelay(delaySeconds);
   }, [delaySeconds]);
 
-  /**
-   * Handle status change with optimistic updates
-   */
   const handleStatusChange = useCallback(async () => {
     if (disableControls || isProcessing) return;
 
     const newStatus = localGameStatus === 'active' ? 'paused' : 'active';
     
-    console.log(`🔄 Status change command: ${localGameStatus} → ${newStatus}`);
-    
-    // Optimistic update for immediate UI feedback
     setLocalGameStatus(newStatus);
     setCommandInProgress('status');
     
     try {
-      // Send command (returns command ID)
       const commandId = updateGameStatus(newStatus, newStatus === 'active');
-      console.log(`📤 Status command sent: ${commandId}`);
-      
-      // Call the prop callback
       onStatusChange(newStatus);
       
-      // Clear command tracking after a delay
       setTimeout(() => {
         setCommandInProgress(null);
       }, 1000);
       
     } catch (error) {
       console.error('❌ Status command failed:', error);
-      
-      // Revert optimistic update on error
       setLocalGameStatus(gameStatus);
       setCommandInProgress(null);
     }
   }, [localGameStatus, gameStatus, updateGameStatus, onStatusChange, disableControls, isProcessing]);
 
-  /**
-   * Handle sound toggle with optimistic updates
-   */
   const handleSoundToggle = useCallback(() => {
     if (disableControls) return;
     
     const newSoundEnabled = !localSoundEnabled;
     
-    // Optimistic update
     setLocalSoundEnabled(newSoundEnabled);
     setCommandInProgress('sound');
     
     try {
-      // Send command
       const commandId = updateSoundSettings(newSoundEnabled);
-      console.log(`📤 Sound command sent: ${commandId}`);
-      
-      // Call the prop callback
       onSoundToggle();
       
-      // Clear command tracking
       setTimeout(() => {
         setCommandInProgress(null);
       }, 500);
       
     } catch (error) {
       console.error('❌ Sound command failed:', error);
-      
-      // Revert on error
       setLocalSoundEnabled(soundEnabled);
       setCommandInProgress(null);
     }
   }, [localSoundEnabled, soundEnabled, updateSoundSettings, onSoundToggle, disableControls]);
 
-  /**
-   * Handle delay change
-   */
   const handleDelaySubmit = useCallback(() => {
     const delayValue = typeof tempDelay === 'string' ? 
       (tempDelay === '' ? 3 : parseInt(tempDelay)) : tempDelay;
@@ -140,11 +110,7 @@ function GameControls({
     const validDelay = Math.max(3, Math.min(20, delayValue));
     
     try {
-      // Send command
       const commandId = updateCallDelay(validDelay);
-      console.log(`📤 Delay command sent: ${commandId} (${validDelay}s)`);
-      
-      // Call the prop callback
       onDelayChange(validDelay);
       
       setIsEditingDelay(false);
@@ -156,20 +122,10 @@ function GameControls({
     }
   }, [tempDelay, updateCallDelay, onDelayChange, delaySeconds]);
 
-  /**
-   * Handle end game
-   */
   const handleEndGame = useCallback(() => {
-    console.log('🏁 Ending game with command');
-    
     try {
-      // Send complete game command
       const commandId = completeGame('Manual end by host');
-      console.log(`📤 End game command sent: ${commandId}`);
-      
       setShowEndGameConfirm(false);
-      
-      // Call optional callback for UI navigation
       onGameEnd?.();
       
     } catch (error) {
@@ -177,7 +133,6 @@ function GameControls({
     }
   }, [completeGame, onGameEnd]);
 
-  // Determine button states
   const getStatusButtonText = () => {
     if (commandInProgress === 'status') {
       return localGameStatus === 'active' ? 'Pausing...' : 'Starting...';
@@ -208,7 +163,6 @@ function GameControls({
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-center justify-between bg-gray-50 p-3 sm:p-4 rounded-lg">
-        {/* Status Display */}
         <div className="flex items-center space-x-4 mb-3 sm:mb-0 w-full sm:w-auto">
           <span className="text-sm font-medium text-gray-500">Status:</span>
           <span
@@ -233,9 +187,7 @@ function GameControls({
           )}
         </div>
 
-        {/* Controls */}
         <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 w-full sm:w-auto">
-          {/* Sound Toggle */}
           <button
             onClick={handleSoundToggle}
             disabled={disableControls || commandInProgress === 'sound'}
@@ -253,7 +205,6 @@ function GameControls({
             )}
           </button>
 
-          {/* Delay Control */}
           {isEditingDelay ? (
             <div className="flex items-center space-x-2">
               <input
@@ -304,7 +255,6 @@ function GameControls({
             </button>
           )}
 
-          {/* Main Control Button - Start/Pause */}
           <button
             onClick={handleStatusChange}
             disabled={disableControls || commandInProgress === 'status'}
@@ -315,7 +265,6 @@ function GameControls({
             {getStatusButtonText()}
           </button>
 
-          {/* End Game Button */}
           <button
             onClick={() => setShowEndGameConfirm(true)}
             disabled={isProcessing}
@@ -330,7 +279,6 @@ function GameControls({
         </div>
       </div>
 
-      {/* End Game Confirmation */}
       {showEndGameConfirm && (
         <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
           <div className="flex items-start">
@@ -363,7 +311,6 @@ function GameControls({
         </div>
       )}
 
-      {/* Game Info */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
         <div className="flex items-start">
           <div className="flex-shrink-0">
