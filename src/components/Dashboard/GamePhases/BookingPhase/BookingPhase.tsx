@@ -1,5 +1,5 @@
-// src/components/Dashboard/GamePhases/BookingPhase/BookingPhase.tsx - COMMAND-BASED VERSION
-// Updated to use the proper returnToSetup command
+// src/components/Dashboard/GamePhases/BookingPhase/BookingPhase.tsx - FIXED VERSION
+// Updated to properly handle going back to setup phase
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -35,18 +35,18 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
-  // Get command methods from game context (including new returnToSetup)
+  // Get command methods from game context
   const { 
     createBooking, 
     updateBooking, 
     startPlayingPhase,
-    returnToSetup, // NEW: Return to setup command
     isProcessing 
   } = useGame();
   
   const [gameData, setGameData] = useState<Game.CurrentGame | null>(null);
   const [selectedTickets, setSelectedTickets] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isReturningToSetup, setIsReturningToSetup] = useState(false); // NEW: Separate state for back to setup
   const [error, setError] = useState<string | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -136,38 +136,76 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
   };
 
   /**
-   * NEW: Return to setup phase using proper command
+   * FIXED: Return to setup phase using direct database update
    */
   const handleBackToSetup = async () => {
     if (!currentUser?.uid) return;
 
+    setIsReturningToSetup(true);
+    setError(null);
+
     try {
-      console.log('⬅️ Returning to setup phase with command');
+      console.log('⬅️ Returning to setup phase');
       
-      // Ask user if they want to clear bookings (default: yes)
-      const shouldClearBookings = window.confirm(
-        'Do you want to clear all existing bookings when returning to setup?\n\n' +
-        'Click "OK" to clear bookings (recommended)\n' +
-        'Click "Cancel" to keep existing bookings'
-      );
+      // Import and use database service directly
+      const { GameDatabaseService } = await import('../../../../services/GameDatabaseService');
+      const dbService = GameDatabaseService.getInstance();
       
-      // Send command to return to setup
-      const commandId = returnToSetup(shouldClearBookings);
-      console.log(`📤 Return to setup command sent: ${commandId}`);
+      // Update both phase and status, clear bookings
+      await dbService.batchUpdateGameData(currentUser.uid, {
+        gameState: {
+          phase: 1 as const,  // Back to setup phase
+          status: 'setup' as const,  // Setup status
+          isAutoCalling: false,
+          soundEnabled: currentGame?.gameState?.soundEnabled || true,
+          winners: {
+            quickFive: [], topLine: [], middleLine: [], bottomLine: [],
+            corners: [], starCorners: [], halfSheet: [], fullSheet: [],
+            fullHouse: [], secondFullHouse: []
+          },
+          allPrizesWon: false
+        },
+        // Clear all bookings and reset to available
+        bookings: {},
+        // Reset tickets to available (keep the ticket data)
+        tickets: Object.fromEntries(
+          Object.keys(currentGame?.activeTickets?.tickets || {}).map(ticketId => [
+            ticketId, 
+            { status: 'available' }
+          ])
+        ),
+        // Reset booking metrics
+        metrics: {
+          startTime: Date.now(),
+          lastBookingTime: Date.now(),
+          totalBookings: 0,
+          totalPlayers: 0
+        },
+        // Clear players
+        players: {},
+        // Reset number system
+        numberSystem: {
+          callDelay: currentGame?.settings?.callDelay || 5,
+          currentNumber: null,
+          calledNumbers: [],
+          queue: []
+        }
+      });
+      
+      console.log('✅ Successfully returned to setup phase');
       
       // Show success message
-      setToastMessage(
-        shouldClearBookings 
-          ? 'Returning to setup phase. All bookings will be cleared.'
-          : 'Returning to setup phase. Existing bookings will be preserved.'
-      );
+      setToastMessage('Returned to setup phase. All bookings have been cleared.');
       setShowToast(true);
       
-      // Navigation will happen automatically when game state updates
+      // The game state will update automatically via Firebase subscription
+      // which will trigger navigation to setup phase in Dashboard.tsx
       
     } catch (err) {
       console.error('❌ Error returning to setup:', err);
       setError(handleApiError(err, 'Failed to return to setup phase. Please try again.'));
+    } finally {
+      setIsReturningToSetup(false);
     }
   };
 
@@ -217,20 +255,27 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
             </p>
           </div>
           <div className="flex items-center space-x-4">
-            {isProcessing && (
+            {(isProcessing || isReturningToSetup) && (
               <span className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded flex items-center">
                 <div className="animate-spin h-3 w-3 border border-blue-600 border-t-transparent rounded-full mr-1" />
-                Processing...
+                {isReturningToSetup ? 'Returning to setup...' : 'Processing...'}
               </span>
             )}
             <button
               onClick={handleBackToSetup}
-              disabled={isProcessing || isSubmitting}
+              disabled={isProcessing || isReturningToSetup || isSubmitting}
               className={`px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 
                 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center
-                ${isProcessing || isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                ${isProcessing || isReturningToSetup || isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              Back to Setup
+              {isReturningToSetup ? (
+                <>
+                  <div className="animate-spin h-3 w-3 border border-gray-600 border-t-transparent rounded-full mr-2" />
+                  Returning...
+                </>
+              ) : (
+                'Back to Setup'
+              )}
             </button>
           </div>
         </div>
@@ -263,7 +308,7 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
         <div className="space-y-6">
           <BookingForm
             selectedCount={selectedTickets.length}
-            isSubmitting={isSubmitting || isProcessing}
+            isSubmitting={isSubmitting || isProcessing || isReturningToSetup}
             onSubmit={handleBookingSubmit}
           />
 
@@ -278,16 +323,17 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
               disabled={
                 Object.keys(gameData.activeTickets?.bookings || {}).length === 0 || 
                 isProcessing ||
-                isSubmitting
+                isSubmitting ||
+                isReturningToSetup
               }
               className={`w-full px-6 py-3 rounded-lg font-medium
                 ${Object.keys(gameData.activeTickets?.bookings || {}).length === 0 || 
-                  isProcessing || isSubmitting
+                  isProcessing || isSubmitting || isReturningToSetup
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-green-500 text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2'
                 }`}
             >
-              {isProcessing || isSubmitting ? (
+              {isProcessing || isSubmitting || isReturningToSetup ? (
                 <span className="flex items-center justify-center">
                   <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
                   Processing...
