@@ -1,4 +1,4 @@
-// src/services/CommandQueue.ts - PROPER FIX (No manual overrides or long timeouts)
+// src/services/CommandQueue.ts - FIXED: Browser compatibility (no setImmediate)
 // Fixed: Race conditions, proper async handling, immediate state reset
 
 import { GameCommand, CommandResult, CommandPriority, CommandStats, CommandError, CommandErrorType } from '../types/commands';
@@ -91,7 +91,7 @@ export class CommandQueue {
       
       console.log(`✅ Command enqueued: ${command.type} (queue: ${this.queue.length})`);
       
-      // PROPER FIX: Start processing immediately with proper state check
+      // FIXED: Start processing immediately (browser-compatible)
       this.startProcessing();
       
       return true;
@@ -115,8 +115,8 @@ export class CommandQueue {
       return;
     }
     
-    // Start processing immediately
-    setImmediate(() => this.processQueue());
+    // FIXED: Browser-compatible async scheduling (no setImmediate)
+    setTimeout(() => this.processQueue(), 0);
   }
   
   /**
