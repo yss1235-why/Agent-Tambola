@@ -166,6 +166,14 @@ export class CommandProcessor {
   }
   
   /**
+   * PROPER FIX: Get available numbers for UI
+   */
+  public static getAvailableNumbers(calledNumbers: number[]): number[] {
+    const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
+    return allNumbers.filter(num => !calledNumbers.includes(num));
+  }
+  
+  /**
    * PROPER FIX: Execute call number with abort signal
    */
   private async executeCallNumber(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
@@ -721,16 +729,17 @@ export class CommandProcessor {
       const validationResults = validateAllPrizes(context);
       
       if (validationResults.length > 0) {
-        const winnersUpdate: Record<string, string[]> = {};
+        const winnersUpdate: Partial<Game.Winners> = {};
         let hasNewWinners = false;
         
         for (const result of validationResults) {
           if (result?.isWinner && Array.isArray(result.winningTickets) && result.winningTickets.length > 0) {
-            const currentPrizeWinners = currentWinners[result.prizeType] || [];
+            const prizeType = result.prizeType as keyof Game.Winners;
+            const currentPrizeWinners = currentWinners[prizeType] || [];
             const newWinners = result.winningTickets.filter(ticketId => !currentPrizeWinners.includes(ticketId));
             
             if (newWinners.length > 0) {
-              winnersUpdate[result.prizeType] = [...currentPrizeWinners, ...newWinners];
+              winnersUpdate[prizeType] = [...currentPrizeWinners, ...newWinners];
               hasNewWinners = true;
             }
           }
@@ -744,7 +753,8 @@ export class CommandProcessor {
           const allActivePrizesWon = Object.entries(activePrizes)
             .filter(([_, isActive]) => isActive)
             .every(([prizeType]) => {
-              const winners = updatedWinners[prizeType as keyof Game.Winners];
+              const prizeKey = prizeType as keyof Game.Winners;
+              const winners = updatedWinners[prizeKey];
               return Array.isArray(winners) && winners.length > 0;
             });
           
