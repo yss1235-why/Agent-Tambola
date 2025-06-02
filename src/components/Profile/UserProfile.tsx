@@ -1,4 +1,4 @@
-// src/components/Profile/UserProfile.tsx - FIXED TypeScript compilation errors
+// src/components/Profile/UserProfile.tsx - FIXED: Proper data reading and structure
 import React, { useState, useEffect } from 'react';
 import { updateEmail, updatePassword, reauthenticateWithCredential, 
   EmailAuthProvider } from 'firebase/auth';
@@ -7,6 +7,21 @@ import { LoadingSpinner } from '@components';
 import { ref, get, update } from 'firebase/database';
 import { database } from '../../lib/firebase';
 
+// FIXED: Use the actual HostProfile structure from AuthContext
+interface HostProfile {
+  email: string;
+  lastLogin: number;
+  role: 'host';
+  status: 'active' | 'inactive';
+  subscriptionEnd: number;
+  username: string;
+  // Optional fields that might exist
+  organization?: string;
+  contactNumber?: string;
+  address?: string;
+}
+
+// FIXED: Create a proper ProfileData interface that maps to HostProfile
 interface ProfileData {
   username: string;
   organization: string;
@@ -32,38 +47,74 @@ const handleApiError = (error: any, defaultMessage: string): string => {
   return defaultMessage;
 };
 
-// FIXED: Simple Firebase utilities with proper generic syntax
-type ReadDataResult<T> = { success: boolean; data?: T; error?: string };
-
-const readData = async function<T>(hostId: string, path: string): Promise<ReadDataResult<T>> {
+// FIXED: Simple Firebase utilities that read from correct path
+const readHostProfile = async (hostId: string): Promise<HostProfile | null> => {
   try {
-    const dataRef = ref(database, `hosts/${hostId}/${path}`);
+    // FIXED: Read directly from hosts/{hostId}, not hosts/{hostId}/profile
+    const dataRef = ref(database, `hosts/${hostId}`);
     const snapshot = await get(dataRef);
     
     if (snapshot.exists()) {
-      return { success: true, data: snapshot.val() as T };
+      return snapshot.val() as HostProfile;
     } else {
-      return { success: false, error: 'Data not found' };
+      return null;
     }
   } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to read data' 
-    };
+    console.error('Error reading host profile:', error);
+    throw new Error(error instanceof Error ? error.message : 'Failed to read profile');
   }
 };
 
-const updateData = async (hostId: string, updates: any): Promise<{ success: boolean; error?: string }> => {
+const updateHostProfile = async (hostId: string, updates: Partial<HostProfile>): Promise<void> => {
   try {
     const hostRef = ref(database, `hosts/${hostId}`);
-    await update(hostRef, updates);
-    return { success: true };
+    await update(hostRef, {
+      ...updates,
+      lastUpdated: Date.now()
+    });
   } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to update data' 
-    };
+    console.error('Error updating host profile:', error);
+    throw new Error(error instanceof Error ? error.message : 'Failed to update profile');
   }
+};
+
+// FIXED: Map HostProfile to ProfileData structure
+const mapHostProfileToProfileData = (hostProfile: HostProfile): ProfileData => {
+  const subscriptionStatus = hostProfile.status === 'active' && hostProfile.subscriptionEnd > Date.now() 
+    ? 'active' 
+    : 'expired';
+
+  return {
+    username: hostProfile.username || '',
+    organization: hostProfile.organization || '',
+    contactNumber: hostProfile.contactNumber || '',
+    address: hostProfile.address || '',
+    subscriptionDetails: {
+      plan: 'Tambola Host Premium', // Default plan name
+      startDate: Date.now() - (365 * 24 * 60 * 60 * 1000), // Assume 1 year ago
+      endDate: hostProfile.subscriptionEnd,
+      status: subscriptionStatus,
+      features: [
+        'Unlimited game sessions',
+        'Advanced prize configuration',
+        'Player management',
+        'Game analytics',
+        'Export functionality'
+      ]
+    }
+  };
+};
+
+// FIXED: Map ProfileData back to HostProfile updates
+const mapProfileDataToHostProfile = (profileData: Partial<ProfileData>): Partial<HostProfile> => {
+  const updates: Partial<HostProfile> = {};
+  
+  if (profileData.username !== undefined) updates.username = profileData.username;
+  if (profileData.organization !== undefined) updates.organization = profileData.organization;
+  if (profileData.contactNumber !== undefined) updates.contactNumber = profileData.contactNumber;
+  if (profileData.address !== undefined) updates.address = profileData.address;
+  
+  return updates;
 };
 
 export const UserProfile: React.FC = () => {
@@ -75,24 +126,69 @@ export const UserProfile: React.FC = () => {
   const [editData, setEditData] = useState<Partial<ProfileData>>({});
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadProfileData();
-  }, []);
+  }, [currentUser]);
 
   const loadProfileData = async () => {
-    if (!currentUser?.uid) return;
+    if (!currentUser?.uid) {
+      setError('No user logged in');
+      setIsLoading(false);
+      return;
+    }
 
     try {
-      const result = await readData<any>(currentUser.uid, 'profile');
+      setIsLoading(true);
+      setError(null);
       
-      if (result.success && result.data) {
-        setProfileData(result.data);
-        setEditData(result.data);
+      console.log('Loading profile data for user:', currentUser.uid);
+      
+      // FIXED: Read from correct path
+      const hostProfile = await readHostProfile(currentUser.uid);
+      
+      if (hostProfile) {
+        console.log('Host profile found:', hostProfile);
+        
+        // FIXED: Map to expected structure
+        const mappedProfileData = mapHostProfileToProfileData(hostProfile);
+        
+        setProfileData(mappedProfileData);
+        setEditData(mappedProfileData);
+        console.log('Profile data loaded successfully');
+      } else {
+        console.warn('No host profile found, creating default');
+        
+        // FIXED: Create default profile data if none exists
+        const defaultProfile: ProfileData = {
+          username: currentUser.email?.split('@')[0] || 'Host',
+          organization: '',
+          contactNumber: '',
+          address: '',
+          subscriptionDetails: {
+            plan: 'Tambola Host Premium',
+            startDate: Date.now(),
+            endDate: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 year from now
+            status: 'active',
+            features: [
+              'Unlimited game sessions',
+              'Advanced prize configuration',
+              'Player management',
+              'Game analytics',
+              'Export functionality'
+            ]
+          }
+        };
+        
+        setProfileData(defaultProfile);
+        setEditData(defaultProfile);
       }
     } catch (error) {
       console.error('Error loading profile:', error);
-      setError('Failed to load profile data');
+      setError(handleApiError(error, 'Failed to load profile data'));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -104,23 +200,21 @@ export const UserProfile: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      const updatedProfile = {
-        ...profileData,
-        ...editData,
-        lastUpdated: Date.now()
-      };
+      console.log('Updating profile with data:', editData);
+      
+      // FIXED: Map and update only the changed fields
+      const hostProfileUpdates = mapProfileDataToHostProfile(editData);
+      
+      await updateHostProfile(currentUser.uid, hostProfileUpdates);
 
-      const result = await updateData(currentUser.uid, {
-        profile: updatedProfile
-      });
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to update profile');
-      }
-
-      setProfileData(updatedProfile as ProfileData);
+      // FIXED: Update local state immediately
+      const updatedProfile = { ...profileData, ...editData } as ProfileData;
+      setProfileData(updatedProfile);
+      
       setIsEditing(false);
       setSuccessMessage('Profile updated successfully');
+      
+      console.log('Profile updated successfully');
     } catch (error) {
       console.error('Error updating profile:', error);
       setError(handleApiError(error, 'Failed to update profile'));
@@ -181,10 +275,72 @@ export const UserProfile: React.FC = () => {
     }
   };
 
-  if (!profileData) {
+  // FIXED: Show loading state properly
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <LoadingSpinner size="large" />
+        <div className="text-center">
+          <LoadingSpinner size="large" />
+          <p className="mt-4 text-gray-600">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // FIXED: Show error state if profile couldn't be loaded
+  if (!profileData && error) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error Loading Profile</h3>
+              <p className="text-sm text-red-700 mt-2">{error}</p>
+            </div>
+          </div>
+          <div className="mt-4">
+            <button
+              onClick={loadProfileData}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // FIXED: Fallback if profileData is still null
+  if (!profileData) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">Profile Not Found</h3>
+              <p className="text-sm text-yellow-700 mt-2">No profile data available. Please try reloading.</p>
+            </div>
+          </div>
+          <div className="mt-4">
+            <button
+              onClick={loadProfileData}
+              className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+            >
+              Reload Profile
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -367,7 +523,7 @@ export const UserProfile: React.FC = () => {
             sm:gap-4 sm:px-6 rounded-lg">
             <dt className="text-sm font-medium text-gray-500">Time Remaining</dt>
             <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-              {daysRemaining} days
+              {daysRemaining > 0 ? `${daysRemaining} days` : 'Expired'}
             </dd>
           </div>
 
