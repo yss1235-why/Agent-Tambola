@@ -1,5 +1,5 @@
-// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - COMPLETELY FIXED
-// Removed all incorrect HostProfile usage, uses only Game.Settings
+// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - CLEAN VERSION
+// Removed all instructional content
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,7 +10,7 @@ import PrizeConfiguration from './components/PrizeConfiguration';
 import TicketSetSelector from './components/TicketSetSelector';
 import GameParameters from './components/GameParameters';
 import { Game } from '../../../../types/game';
-import { AlertTriangle, CheckCircle, Save, ChevronRight, Phone } from 'lucide-react';
+import { AlertTriangle, Save, ChevronRight, Phone } from 'lucide-react';
 import { loadTicketData, validateTicketData } from '../../../../utils/ticketLoader';
 
 interface GameSetupProps {
@@ -21,7 +21,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
-  // Get command methods from game context
   const { 
     updateGameSettings, 
     startBookingPhase,
@@ -97,9 +96,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     return errors.length === 0;
   };
 
-  /**
-   * Save settings using command
-   */
   const saveSettings = async () => {
     if (!currentUser?.uid) return;
     
@@ -115,7 +111,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     try {
       console.log('💾 Saving settings with command');
       
-      // Send command to update game settings
       const commandId = updateGameSettings(settings);
       console.log(`📤 Update settings command sent: ${commandId}`);
       
@@ -134,9 +129,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     }
   };
 
-  /**
-   * Start booking phase using command
-   */
   const handleStartBookingPhase = async () => {
     if (!currentUser?.uid) return;
     
@@ -152,7 +144,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     try {
       console.log('🎫 Starting booking phase with command');
       
-      // Load ticket data
       console.log('Loading ticket data...');
       const ticketData = await loadTicketData(
         settings.selectedTicketSet,
@@ -165,7 +156,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       
       console.log(`Ticket data loaded successfully. Creating ${settings.maxTickets} tickets...`);
       
-      // Create tickets object
       const tickets: Record<string, Game.Ticket> = {};
       for (let i = 1; i <= settings.maxTickets; i++) {
         const ticketId = i.toString();
@@ -180,15 +170,12 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         };
       }
       
-      // Send command to start booking phase
       const commandId = startBookingPhase(settings, tickets);
       console.log(`📤 Start booking phase command sent: ${commandId}`);
       
       setToastMessage('Moving to booking phase');
       setToastType('success');
       setShowToast(true);
-      
-      // Navigation will happen automatically when game state updates
       
     } catch (error) {
       console.error('❌ Error starting booking phase:', error);
@@ -267,9 +254,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
           
           <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border">
             <h3 className="text-base sm:text-lg font-medium text-gray-900">Host Contact</h3>
-            <p className="text-gray-500 text-xs sm:text-sm mt-1">
-              Enter host phone number for player assistance
-            </p>
             
             <div className="mt-3 sm:mt-4">
               <label 
@@ -301,9 +285,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                   placeholder="+91 9876543210"
                 />
               </div>
-              <p className="mt-1 sm:mt-2 text-xs text-gray-500">
-                Include country code (e.g., +91) followed by 10-digit number
-              </p>
             </div>
           </div>
           
@@ -340,66 +321,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
               </>
             )}
           </button>
-        </div>
-      </div>
-      
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">
-          Game Setup Guide
-        </h3>
-        
-        <div className="space-y-4">
-          <div className="flex">
-            <div className="flex-shrink-0 mt-1">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-            </div>
-            <div className="ml-3">
-              <h4 className="text-sm font-medium text-gray-900">Choose a Ticket Set</h4>
-              <p className="mt-1 text-sm text-gray-600">
-                Select one of the four available ticket sets. Each set contains unique tickets with
-                different number distributions.
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex">
-            <div className="flex-shrink-0 mt-1">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-            </div>
-            <div className="ml-3">
-              <h4 className="text-sm font-medium text-gray-900">Set the Maximum Tickets</h4>
-              <p className="mt-1 text-sm text-gray-600">
-                Limit the number of tickets available for this game. Consider your expected
-                player count when setting this value.
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex">
-            <div className="flex-shrink-0 mt-1">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-            </div>
-            <div className="ml-3">
-              <h4 className="text-sm font-medium text-gray-900">Adjust Call Delay</h4>
-              <p className="mt-1 text-sm text-gray-600">
-                Set the time between automatic number calls. Beginners may prefer a longer
-                delay, while experienced players might enjoy a faster pace.
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex">
-            <div className="flex-shrink-0 mt-1">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-            </div>
-            <div className="ml-3">
-              <h4 className="text-sm font-medium text-gray-900">Configure Prizes</h4>
-              <p className="mt-1 text-sm text-gray-600">
-                Enable or disable the prize types for this game. At least one prize type
-                must be enabled. Consider your audience when selecting prizes.
-              </p>
-            </div>
-          </div>
         </div>
       </div>
       
