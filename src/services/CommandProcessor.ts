@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - COMPLETE FIX: All TypeScript errors resolved
+// src/services/CommandProcessor.ts - FIXED: Browser compatibility (no setImmediate)
 import { GameCommand, CommandResult, CommandContext, CommandValidationResult } from '../types/commands';
 import { GameDatabaseService } from './GameDatabaseService';
 import { validateAllPrizes, ValidationContext } from '../utils/prizeValidation';
@@ -234,16 +234,16 @@ export class CommandProcessor {
   }
   
   /**
-   * Prize checking in background (non-blocking)
+   * FIXED: Prize checking in background (browser-compatible)
    */
   private checkForPrizesAsync(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): void {
-    setImmediate(async () => {
+    setTimeout(async () => {
       try {
         await this.checkForPrizes(hostId, currentGame, calledNumbers);
       } catch (error) {
         console.error('Background prize check failed:', error);
       }
-    });
+    }, 0);
   }
   
   private async executeUpdateGameStatus(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
