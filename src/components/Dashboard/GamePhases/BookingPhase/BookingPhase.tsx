@@ -1,5 +1,5 @@
-// src/components/Dashboard/GamePhases/BookingPhase/BookingPhase.tsx - UPDATED to use Command Queue Pattern
-// Simplified booking phase that uses commands instead of complex database operations
+// src/components/Dashboard/GamePhases/BookingPhase/BookingPhase.tsx - COMMAND-BASED VERSION
+// Updated to use the proper returnToSetup command
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -35,12 +35,12 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
-  // Get command methods from game context
+  // Get command methods from game context (including new returnToSetup)
   const { 
     createBooking, 
     updateBooking, 
-    updateGameStatus,
     startPlayingPhase,
+    returnToSetup, // NEW: Return to setup command
     isProcessing 
   } = useGame();
   
@@ -136,7 +136,7 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
   };
 
   /**
-   * Return to setup phase using command
+   * NEW: Return to setup phase using proper command
    */
   const handleBackToSetup = async () => {
     if (!currentUser?.uid) return;
@@ -144,15 +144,30 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
     try {
       console.log('⬅️ Returning to setup phase with command');
       
-      // Send command to update game status back to setup
-      const commandId = updateGameStatus('setup' as any); // TypeScript workaround
-      console.log(`📤 Back to setup command sent: ${commandId}`);
+      // Ask user if they want to clear bookings (default: yes)
+      const shouldClearBookings = window.confirm(
+        'Do you want to clear all existing bookings when returning to setup?\n\n' +
+        'Click "OK" to clear bookings (recommended)\n' +
+        'Click "Cancel" to keep existing bookings'
+      );
+      
+      // Send command to return to setup
+      const commandId = returnToSetup(shouldClearBookings);
+      console.log(`📤 Return to setup command sent: ${commandId}`);
+      
+      // Show success message
+      setToastMessage(
+        shouldClearBookings 
+          ? 'Returning to setup phase. All bookings will be cleared.'
+          : 'Returning to setup phase. Existing bookings will be preserved.'
+      );
+      setShowToast(true);
       
       // Navigation will happen automatically when game state updates
       
     } catch (err) {
       console.error('❌ Error returning to setup:', err);
-      setError(handleApiError(err, 'Failed to return to setup phase.'));
+      setError(handleApiError(err, 'Failed to return to setup phase. Please try again.'));
     }
   };
 
@@ -210,10 +225,10 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
             )}
             <button
               onClick={handleBackToSetup}
-              disabled={isProcessing}
+              disabled={isProcessing || isSubmitting}
               className={`px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 
                 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center
-                ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                ${isProcessing || isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               Back to Setup
             </button>
@@ -266,7 +281,8 @@ const BookingPhase: React.FC<BookingPhaseProps> = ({ currentGame }) => {
                 isSubmitting
               }
               className={`w-full px-6 py-3 rounded-lg font-medium
-                ${Object.keys(gameData.activeTickets?.bookings || {}).length === 0 || isProcessing || isSubmitting
+                ${Object.keys(gameData.activeTickets?.bookings || {}).length === 0 || 
+                  isProcessing || isSubmitting
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-green-500 text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2'
                 }`}
