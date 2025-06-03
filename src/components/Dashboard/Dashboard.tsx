@@ -1,5 +1,5 @@
-// src/components/Dashboard/Dashboard.tsx - UPDATED to use Command Queue Pattern
-// Simplified dashboard that uses commands instead of complex database operations
+// src/components/Dashboard/Dashboard.tsx - UPDATED to show winners on game completion
+// Modified to display all winners above "Start New Game" button
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,6 +8,7 @@ import DashboardHeader from './DashboardHeader';
 import GameSetup from './GamePhases/GameSetup/GameSetup';
 import BookingPhase from './GamePhases/BookingPhase/BookingPhase';
 import PlayingPhase from './GamePhases/PlayingPhase/PlayingPhase';
+import WinnerDisplay from './GamePhases/PlayingPhase/components/WinnerDisplay'; // ✅ ADDED: Import WinnerDisplay
 import { LoadingSpinner } from '@components';
 import { Game, GAME_PHASES } from '../../types/game';
 import SubscriptionExpiredPrompt from './SubscriptionExpiredPrompt';
@@ -122,26 +123,102 @@ function Dashboard() {
         
       case GAME_PHASES.COMPLETED:
       default:
+        // ✅ UPDATED: Show winners above "Start New Game" button
+        const winners = currentGame.gameState?.winners || {
+          quickFive: [], topLine: [], middleLine: [], bottomLine: [],
+          corners: [], starCorners: [], halfSheet: [], fullSheet: [],
+          fullHouse: [], secondFullHouse: []
+        };
+        
+        const activeTickets = currentGame.activeTickets || { tickets: {}, bookings: {} };
+        const settings = currentGame.settings || DEFAULT_SETTINGS;
+        
         return (
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-semibold text-gray-900">
-              Game Completed
-            </h2>
-            <p className="mt-2 text-gray-600">
-              The game has ended. Start a new game to continue.
-            </p>
-            {isSubscriptionValid ? (
-              <button
-                onClick={handleInitializeNewGame}
-                disabled={isInitializing || isProcessing}
-                className={`mt-4 px-6 py-2 rounded-lg bg-blue-500 text-white font-medium
-                  ${isInitializing || isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
-              >
-                {isInitializing ? 'Initializing...' : 'Start New Game'}
-              </button>
-            ) : (
-              <SubscriptionExpiredPrompt />
-            )}
+          <div className="space-y-8">
+            {/* ✅ Game Completion Header */}
+            <div className="text-center py-8">
+              <h2 className="text-2xl font-semibold text-gray-900">
+                Game Completed
+              </h2>
+              <p className="mt-2 text-gray-600">
+                The game has ended. Here are all the winners from this game.
+              </p>
+            </div>
+
+            {/* ✅ ADDED: Winners Display Section */}
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <div className="flex items-center mb-6">
+                <div className="bg-green-100 p-3 rounded-full mr-4">
+                  <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">Final Results</h3>
+                  <p className="text-gray-600">All winners from this completed game</p>
+                </div>
+              </div>
+              
+              {/* ✅ Winner Display Component */}
+              <WinnerDisplay
+                winners={winners}
+                tickets={activeTickets.tickets}
+                bookings={activeTickets.bookings}
+                prizes={settings.prizes}
+                showAllPrizes={true}
+              />
+            </div>
+
+            {/* ✅ Game Statistics */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+              <h4 className="text-lg font-medium text-blue-900 mb-4">Game Statistics</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {currentGame.numberSystem?.calledNumbers?.length || 0}
+                  </div>
+                  <div className="text-sm text-gray-600">Numbers Called</div>
+                </div>
+                <div className="bg-white rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {Object.keys(activeTickets.bookings || {}).length}
+                  </div>
+                  <div className="text-sm text-gray-600">Total Tickets</div>
+                </div>
+                <div className="bg-white rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {Object.values(winners).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0)}
+                  </div>
+                  <div className="text-sm text-gray-600">Prizes Claimed</div>
+                </div>
+              </div>
+            </div>
+
+            {/* ✅ Start New Game Section */}
+            <div className="text-center py-8">
+              <p className="mb-6 text-gray-600">
+                Ready to start a new game?
+              </p>
+              {isSubscriptionValid ? (
+                <button
+                  onClick={handleInitializeNewGame}
+                  disabled={isInitializing || isProcessing}
+                  className={`px-8 py-3 rounded-lg bg-blue-500 text-white font-medium text-lg
+                    ${isInitializing || isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
+                >
+                  {isInitializing ? (
+                    <span className="flex items-center">
+                      <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full mr-2" />
+                      Initializing...
+                    </span>
+                  ) : (
+                    'Start New Game'
+                  )}
+                </button>
+              ) : (
+                <SubscriptionExpiredPrompt />
+              )}
+            </div>
           </div>
         );
     }
