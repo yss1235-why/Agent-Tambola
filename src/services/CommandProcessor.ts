@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - FIXED: Prize settings bug
+// src/services/CommandProcessor.ts - UPDATED with Regenerate Tickets Command
 import { GameCommand, CommandResult, CommandContext, CommandValidationResult } from '../types/commands';
 import { GameDatabaseService } from './GameDatabaseService';
 import { validateAllPrizes, ValidationContext } from '../utils/prizeValidation';
@@ -100,6 +100,9 @@ export class CommandProcessor {
         case 'RETURN_TO_SETUP':
           result = await this.executeReturnToSetup(command, context, abortSignal);
           break;
+        case 'REGENERATE_TICKETS':
+          result = await this.executeRegenerateTickets(command, context, abortSignal);
+          break;
         default:
           throw new Error(`Unknown command type: ${(command as any).type}`);
       }
@@ -168,7 +171,90 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute return to setup command
+   * NEW: Execute regenerate tickets command
+   */
+  private async executeRegenerateTickets(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
+    if (abortSignal?.aborted) throw new Error('Regenerate tickets was aborted');
+    
+    const { selectedTicketSet, maxTickets } = command.payload;
+    const { hostId, currentGame } = context;
+    
+    if (!currentGame) {
+      throw new Error('No active game found');
+    }
+    
+    // Only allow ticket regeneration in setup phase
+    if (currentGame.gameState?.phase !== 1) {
+      throw new Error('Tickets can only be regenerated during setup phase');
+    }
+    
+    console.log(`🎫 Regenerating ${maxTickets} tickets from set ${selectedTicketSet}`);
+    
+    try {
+      // Load new ticket data
+      const ticketData = await loadTicketData(selectedTicketSet, maxTickets);
+      
+      if (!validateTicketData(ticketData)) {
+        throw new Error('Invalid ticket data structure');
+      }
+      
+      // Create new tickets object
+      const tickets: Record<string, Game.Ticket> = {};
+      for (let i = 1; i <= maxTickets; i++) {
+        const ticketId = i.toString();
+        const ticketNumbers = ticketData[ticketId] || [[], [], []];
+        
+        tickets[ticketId] = {
+          id: ticketId,
+          status: 'available',
+          sheetNumber: selectedTicketSet,
+          position: Math.ceil(i / 6),
+          numbers: ticketNumbers
+        };
+      }
+      
+      if (abortSignal?.aborted) throw new Error('Regenerate tickets was aborted before database update');
+      
+      // Update both tickets and settings in one batch
+      await this.databaseService.batchUpdateGameData(hostId, {
+        // Update the tickets structure completely
+        tickets,
+        // Clear any existing bookings since ticket structure changed
+        bookings: {},
+        // Clear players since bookings are cleared
+        players: {},
+        // Reset booking metrics
+        metrics: {
+          startTime: Date.now(),
+          lastBookingTime: Date.now(),
+          totalBookings: 0,
+          totalPlayers: 0
+        },
+        // Update settings to match
+        settings: {
+          ...currentGame.settings,
+          selectedTicketSet,
+          maxTickets
+        }
+      });
+      
+      console.log(`✅ Regenerated ${maxTickets} tickets from set ${selectedTicketSet}`);
+      
+      return this.createSuccessResult(command, {
+        selectedTicketSet,
+        maxTickets,
+        ticketsGenerated: maxTickets,
+        message: `Successfully regenerated ${maxTickets} tickets from set ${selectedTicketSet}`
+      });
+      
+    } catch (error) {
+      console.error('❌ Error regenerating tickets:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Execute return to setup command - UPDATED to clear tickets completely
    */
   private async executeReturnToSetup(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     if (abortSignal?.aborted) throw new Error('Return to setup was aborted');
@@ -182,7 +268,7 @@ export class CommandProcessor {
     
     console.log(`🔄 Returning to setup phase (clearBookings: ${clearBookings})`);
     
-    // Prepare the batch update data
+    // Prepare the batch update data - UPDATED to clear tickets completely
     const batchUpdateData: any = {
       gameState: {
         phase: 1 as const,  // Setup phase
@@ -205,49 +291,30 @@ export class CommandProcessor {
       }
     };
     
-    // Conditionally clear bookings and related data
-    if (clearBookings) {
-      // Clear all bookings
-      batchUpdateData.bookings = {};
-      
-      // Reset tickets to available (keep the ticket data but change status)
-      if (currentGame.activeTickets?.tickets) {
-        batchUpdateData.tickets = Object.fromEntries(
-          Object.keys(currentGame.activeTickets.tickets).map(ticketId => [
-            ticketId, 
-            { status: 'available' }
-          ])
-        );
-      }
-      
-      // Reset booking metrics
-      batchUpdateData.metrics = {
-        startTime: Date.now(),
-        lastBookingTime: Date.now(),
-        totalBookings: 0,
-        totalPlayers: 0
-      };
-      
-      // Clear players
-      batchUpdateData.players = {};
-      
-      console.log(`🧹 Clearing ${Object.keys(currentGame.activeTickets?.bookings || {}).length} bookings`);
-    }
+    // UPDATED: Always clear tickets completely when returning to setup
+    // This allows for proper regeneration when settings change
+    batchUpdateData.tickets = {};
+    batchUpdateData.bookings = {};
+    batchUpdateData.players = {};
+    batchUpdateData.metrics = {
+      startTime: Date.now(),
+      lastBookingTime: Date.now(),
+      totalBookings: 0,
+      totalPlayers: 0
+    };
     
     // Execute the batch update
     await this.databaseService.batchUpdateGameData(hostId, batchUpdateData);
     
-    const message = clearBookings 
-      ? 'Successfully returned to setup phase. All bookings have been cleared.'
-      : 'Successfully returned to setup phase. Existing bookings preserved.';
+    const message = 'Successfully returned to setup phase. Ticket structure will be regenerated based on your settings.';
     
     console.log(`✅ ${message}`);
     
     return this.createSuccessResult(command, {
       phase: 1,
       status: 'setup',
-      clearBookings,
-      bookingsCleared: clearBookings ? Object.keys(currentGame.activeTickets?.bookings || {}).length : 0,
+      clearBookings: true,
+      ticketsCleared: true,
       message
     });
   }
@@ -534,9 +601,6 @@ export class CommandProcessor {
     return this.createSuccessResult(command, { game: newGame });
   }
   
-  /**
-   * 🔥 FIXED: executeStartBookingPhase - Now saves settings to database
-   */
   private async executeStartBookingPhase(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     if (abortSignal?.aborted) throw new Error('Start booking phase was aborted');
     
@@ -552,10 +616,9 @@ export class CommandProcessor {
       enabledPrizes: Object.entries(settings.prizes || {}).filter(([_, enabled]) => enabled).map(([name]) => name)
     });
     
-    // 🔥 FIX: Save the complete settings object to the database
     await this.databaseService.batchUpdateGameData(hostId, {
       gameState: { phase: 2 as const, status: 'booking' as const },
-      settings, // 🔥 CRITICAL FIX: Save the complete settings including prizes
+      settings,
       numberSystem: {
         callDelay: settings.callDelay || 5,
         currentNumber: null,
@@ -605,7 +668,6 @@ export class CommandProcessor {
         },
         allPrizesWon: false
       },
-      // Keep existing settings - don't overwrite them
       numberSystem: {
         callDelay: currentGame.settings.callDelay || 5,
         currentNumber: null,
@@ -738,6 +800,8 @@ export class CommandProcessor {
         return this.validateUpdateBooking(command, context);
       case 'RETURN_TO_SETUP':
         return this.validateReturnToSetup(command, context);
+      case 'REGENERATE_TICKETS':
+        return this.validateRegenerateTickets(command, context);
       default:
         return { isValid: true };
     }
@@ -835,8 +899,31 @@ export class CommandProcessor {
     return { isValid: true };
   }
   
+  // NEW: Validate regenerate tickets command
+  private validateRegenerateTickets(command: any, context: CommandContext): CommandValidationResult {
+    const { selectedTicketSet, maxTickets } = command.payload;
+    
+    if (!context.currentGame) {
+      return { isValid: false, error: 'No active game found' };
+    }
+    
+    if (context.currentGame.gameState?.phase !== 1) {
+      return { isValid: false, error: 'Tickets can only be regenerated during setup phase' };
+    }
+    
+    if (typeof selectedTicketSet !== 'number' || selectedTicketSet < 1 || selectedTicketSet > 4) {
+      return { isValid: false, error: 'Selected ticket set must be between 1 and 4' };
+    }
+    
+    if (typeof maxTickets !== 'number' || maxTickets < 1 || maxTickets > 600) {
+      return { isValid: false, error: 'Max tickets must be between 1 and 600' };
+    }
+    
+    return { isValid: true };
+  }
+  
   /**
-   * 🔥 ENHANCED: Prize checking with detailed debugging
+   * Enhanced: Prize checking with detailed debugging
    */
   private async checkForPrizes(hostId: string, currentGame: Game.CurrentGame, calledNumbers: number[]): Promise<void> {
     try {
@@ -853,7 +940,6 @@ export class CommandProcessor {
         fullHouse: false, secondFullHouse: false
       };
       
-      // 🔥 DEBUG: Enhanced prize detection logging
       console.group('🔍 PRIZE DETECTION DEBUG');
       console.log('Settings from database:', currentGame.settings?.prizes);
       console.log('Active prizes passed to validation:', activePrizes);
