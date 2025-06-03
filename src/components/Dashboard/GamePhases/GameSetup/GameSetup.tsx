@@ -1,5 +1,5 @@
-// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - UPDATED
-// Added default settings loading and saving for host phone persistence
+// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - ENHANCED
+// Added better messaging for settings preservation and loading
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,9 +10,9 @@ import PrizeConfiguration from './components/PrizeConfiguration';
 import TicketSetSelector from './components/TicketSetSelector';
 import GameParameters from './components/GameParameters';
 import { Game } from '../../../../types/game';
-import { AlertTriangle, Save, ChevronRight, Phone } from 'lucide-react';
+import { AlertTriangle, Save, ChevronRight, Phone, RefreshCw, CheckCircle } from 'lucide-react';
 import { loadTicketData, validateTicketData } from '../../../../utils/ticketLoader';
-import { GameDatabaseService } from '../../../../services/GameDatabaseService'; // NEW: Import for default settings
+import { GameDatabaseService } from '../../../../services/GameDatabaseService';
 
 interface GameSetupProps {
   currentGame: Game.CurrentGame;
@@ -30,14 +30,15 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
   
   const [settings, setSettings] = useState<Game.Settings>(currentGame.settings);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoadingDefaults, setIsLoadingDefaults] = useState(true); // NEW: Loading state for defaults
+  const [isLoadingDefaults, setIsLoadingDefaults] = useState(true);
+  const [settingsLoadedFrom, setSettingsLoadedFrom] = useState<'database' | 'game' | 'defaults'>('defaults'); // NEW: Track settings source
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info');
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
 
-  // NEW: Load default settings on component mount
+  // 🔥 ENHANCED: Load default settings with better tracking and messaging
   useEffect(() => {
     const loadDefaultSettings = async () => {
       if (!currentUser?.uid) return;
@@ -50,9 +51,12 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         
         if (defaultSettings) {
           console.log('📁 Loaded default settings:', {
+            source: 'Previous game preferences',
             hostPhone: defaultSettings.hostPhone ? 'Found' : 'Not found',
             callDelay: defaultSettings.callDelay,
-            selectedTicketSet: defaultSettings.selectedTicketSet
+            selectedTicketSet: defaultSettings.selectedTicketSet,
+            maxTickets: defaultSettings.maxTickets,
+            enabledPrizes: Object.entries(defaultSettings.prizes || {}).filter(([_, enabled]) => enabled).length
           });
           
           // Merge default settings with current game settings
@@ -60,27 +64,53 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
           const mergedSettings: Game.Settings = {
             ...defaultSettings,
             ...currentGame.settings,
-            // Specifically preserve hostPhone from defaults if current game doesn't have it
-            hostPhone: currentGame.settings.hostPhone || defaultSettings.hostPhone || '+91'
+            // Specifically preserve hostPhone and other personal settings from defaults
+            hostPhone: currentGame.settings.hostPhone || defaultSettings.hostPhone || '+91',
+            // Preserve prize selections from defaults if current game doesn't have them configured
+            prizes: Object.keys(currentGame.settings.prizes || {}).length > 0 
+              ? currentGame.settings.prizes 
+              : defaultSettings.prizes
           };
           
           setSettings(mergedSettings);
+          setSettingsLoadedFrom('database');
           
-          // Show toast if we loaded a saved phone number
+          // 🔥 ENHANCED: Show informative toast about what was loaded
+          const preservedItems = [];
           if (defaultSettings.hostPhone && defaultSettings.hostPhone !== '+91') {
-            setToastMessage(`Host phone auto-populated: ${defaultSettings.hostPhone}`);
+            preservedItems.push('host phone');
+          }
+          
+          const prizesLoaded = Object.entries(defaultSettings.prizes || {}).filter(([_, enabled]) => enabled).length;
+          if (prizesLoaded > 0) {
+            preservedItems.push(`${prizesLoaded} prize selections`);
+          }
+          
+          if (defaultSettings.maxTickets !== 90) {
+            preservedItems.push(`${defaultSettings.maxTickets} max tickets`);
+          }
+          
+          if (defaultSettings.callDelay !== 5) {
+            preservedItems.push(`${defaultSettings.callDelay}s call delay`);
+          }
+          
+          if (preservedItems.length > 0) {
+            setToastMessage(`Settings preserved from previous game: ${preservedItems.join(', ')}`);
             setToastType('info');
             setShowToast(true);
           }
+          
         } else {
           // No default settings found, use current game settings
           console.log('📁 No default settings found, using current game settings');
           setSettings(currentGame.settings);
+          setSettingsLoadedFrom('game');
         }
       } catch (error) {
         console.error('❌ Error loading default settings:', error);
         // Fallback to current game settings
         setSettings(currentGame.settings);
+        setSettingsLoadedFrom('defaults');
       } finally {
         setIsLoadingDefaults(false);
       }
@@ -91,10 +121,10 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
 
   // Update settings when current game changes (but don't override loaded defaults)
   useEffect(() => {
-    if (currentGame?.settings && !isLoadingDefaults) {
+    if (currentGame?.settings && !isLoadingDefaults && settingsLoadedFrom === 'game') {
       setSettings(prev => ({
         ...prev,
-        // Update non-personal settings but preserve hostPhone if already set
+        // Update non-personal settings but preserve personal preferences
         maxTickets: currentGame.settings.maxTickets,
         selectedTicketSet: currentGame.settings.selectedTicketSet,
         callDelay: currentGame.settings.callDelay,
@@ -103,7 +133,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         hostPhone: prev.hostPhone && prev.hostPhone !== '+91' ? prev.hostPhone : currentGame.settings.hostPhone
       }));
     }
-  }, [currentGame, isLoadingDefaults]);
+  }, [currentGame, isLoadingDefaults, settingsLoadedFrom]);
 
   const handleSettingsUpdate = (updates: Partial<Game.Settings>) => {
     setSettings(prev => ({
@@ -160,7 +190,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     return errors.length === 0;
   };
 
-  // NEW: Save both current game settings AND default settings
+  // Save both current game settings AND default settings
   const saveSettings = async () => {
     if (!currentUser?.uid) return;
     
@@ -189,7 +219,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         console.warn('⚠️ Failed to save default settings (non-critical):', defaultError);
       }
       
-      setToastMessage('Settings saved successfully and will be remembered for future games');
+      setToastMessage('Settings saved and will be remembered for future games');
       setToastType('success');
       setShowToast(true);
       setHasMadeChanges(false);
@@ -257,7 +287,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       const commandId = startBookingPhase(settings, tickets);
       console.log(`📤 Start booking phase command sent: ${commandId}`);
       
-      setToastMessage('Moving to booking phase');
+      setToastMessage('Moving to booking phase with preserved settings');
       setToastType('success');
       setShowToast(true);
       
@@ -277,11 +307,40 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <LoadingSpinner size="large" />
-          <p className="mt-4 text-gray-600">Loading saved settings...</p>
+          <p className="mt-4 text-gray-600">Loading your saved settings...</p>
+          <p className="mt-2 text-sm text-gray-500">
+            Restoring prize selections and game preferences
+          </p>
         </div>
       </div>
     );
   }
+
+  // 🔥 NEW: Function to get settings source description
+  const getSettingsSourceInfo = () => {
+    switch (settingsLoadedFrom) {
+      case 'database':
+        return {
+          icon: <CheckCircle className="w-4 h-4 text-green-600" />,
+          text: 'Settings loaded from previous games',
+          color: 'text-green-600'
+        };
+      case 'game':
+        return {
+          icon: <RefreshCw className="w-4 h-4 text-blue-600" />,
+          text: 'Using current game settings',
+          color: 'text-blue-600'
+        };
+      default:
+        return {
+          icon: <AlertTriangle className="w-4 h-4 text-yellow-600" />,
+          text: 'Using default settings',
+          color: 'text-yellow-600'
+        };
+    }
+  };
+
+  const sourceInfo = getSettingsSourceInfo();
 
   return (
     <div className="space-y-6">
@@ -290,12 +349,14 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
           <div>
             <h2 className="text-2xl font-semibold text-gray-900">Game Setup</h2>
             <p className="text-gray-600 mt-1">Configure game settings before starting</p>
-            {/* NEW: Show if settings were auto-loaded */}
-            {settings.hostPhone && settings.hostPhone !== '+91' && (
-              <p className="text-sm text-blue-600 mt-1">
-                📱 Host phone auto-populated from previous game
-              </p>
-            )}
+            
+            {/* 🔥 NEW: Settings source indicator */}
+            <div className="flex items-center mt-2 text-sm">
+              {sourceInfo.icon}
+              <span className={`ml-2 ${sourceInfo.color}`}>
+                {sourceInfo.text}
+              </span>
+            </div>
           </div>
           
           <div className="flex items-center space-x-3">
@@ -363,9 +424,9 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                 className="block text-sm font-medium text-gray-700"
               >
                 Host Phone Number
-                {/* NEW: Indicate if auto-populated */}
-                {settings.hostPhone && settings.hostPhone !== '+91' && (
-                  <span className="text-blue-600 text-xs ml-2">(auto-populated)</span>
+                {/* 🔥 ENHANCED: Better indicator for auto-populated values */}
+                {settings.hostPhone && settings.hostPhone !== '+91' && settingsLoadedFrom === 'database' && (
+                  <span className="text-green-600 text-xs ml-2">(preserved from previous game)</span>
                 )}
               </label>
               <div className="mt-1 sm:mt-2 relative rounded-md shadow-sm">
