@@ -1,7 +1,7 @@
-// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - ENHANCED
-// Added better messaging for settings preservation and loading
+// src/components/Dashboard/GamePhases/GameSetup/GameSetup.tsx - UPDATED
+// Added automatic ticket regeneration when maxTickets or selectedTicketSet changes
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { useGame } from '../../../../contexts/GameContext';
@@ -10,7 +10,7 @@ import PrizeConfiguration from './components/PrizeConfiguration';
 import TicketSetSelector from './components/TicketSetSelector';
 import GameParameters from './components/GameParameters';
 import { Game } from '../../../../types/game';
-import { AlertTriangle, Save, ChevronRight, Phone, RefreshCw, CheckCircle } from 'lucide-react';
+import { AlertTriangle, Save, ChevronRight, Phone, RefreshCw, CheckCircle, Loader } from 'lucide-react';
 import { loadTicketData, validateTicketData } from '../../../../utils/ticketLoader';
 import { GameDatabaseService } from '../../../../services/GameDatabaseService';
 
@@ -25,20 +25,27 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
   const { 
     updateGameSettings, 
     startBookingPhase,
+    regenerateTickets, // NEW: Use regenerate tickets command
     isProcessing 
   } = useGame();
   
   const [settings, setSettings] = useState<Game.Settings>(currentGame.settings);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingDefaults, setIsLoadingDefaults] = useState(true);
-  const [settingsLoadedFrom, setSettingsLoadedFrom] = useState<'database' | 'game' | 'defaults'>('defaults'); // NEW: Track settings source
+  const [isRegeneratingTickets, setIsRegeneratingTickets] = useState(false); // NEW: Track ticket regeneration
+  const [settingsLoadedFrom, setSettingsLoadedFrom] = useState<'database' | 'game' | 'defaults'>('defaults');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info');
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
+  
+  // NEW: Track previous values to detect when ticket regeneration is needed
+  const previousMaxTickets = useRef<number>(currentGame.settings.maxTickets);
+  const previousTicketSet = useRef<number>(currentGame.settings.selectedTicketSet);
+  const hasRegeneratedTickets = useRef<boolean>(false);
 
-  // 🔥 ENHANCED: Load default settings with better tracking and messaging
+  // Load default settings with better tracking and messaging
   useEffect(() => {
     const loadDefaultSettings = async () => {
       if (!currentUser?.uid) return;
@@ -59,14 +66,10 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
             enabledPrizes: Object.entries(defaultSettings.prizes || {}).filter(([_, enabled]) => enabled).length
           });
           
-          // Merge default settings with current game settings
-          // Current game settings take priority, but use defaults for missing values
           const mergedSettings: Game.Settings = {
             ...defaultSettings,
             ...currentGame.settings,
-            // Specifically preserve hostPhone and other personal settings from defaults
             hostPhone: currentGame.settings.hostPhone || defaultSettings.hostPhone || '+91',
-            // Preserve prize selections from defaults if current game doesn't have them configured
             prizes: Object.keys(currentGame.settings.prizes || {}).length > 0 
               ? currentGame.settings.prizes 
               : defaultSettings.prizes
@@ -75,7 +78,10 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
           setSettings(mergedSettings);
           setSettingsLoadedFrom('database');
           
-          // 🔥 ENHANCED: Show informative toast about what was loaded
+          // Update refs with loaded values
+          previousMaxTickets.current = mergedSettings.maxTickets;
+          previousTicketSet.current = mergedSettings.selectedTicketSet;
+          
           const preservedItems = [];
           if (defaultSettings.hostPhone && defaultSettings.hostPhone !== '+91') {
             preservedItems.push('host phone');
@@ -101,16 +107,22 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
           }
           
         } else {
-          // No default settings found, use current game settings
           console.log('📁 No default settings found, using current game settings');
           setSettings(currentGame.settings);
           setSettingsLoadedFrom('game');
+          
+          // Update refs with current game values
+          previousMaxTickets.current = currentGame.settings.maxTickets;
+          previousTicketSet.current = currentGame.settings.selectedTicketSet;
         }
       } catch (error) {
         console.error('❌ Error loading default settings:', error);
-        // Fallback to current game settings
         setSettings(currentGame.settings);
         setSettingsLoadedFrom('defaults');
+        
+        // Update refs with current game values
+        previousMaxTickets.current = currentGame.settings.maxTickets;
+        previousTicketSet.current = currentGame.settings.selectedTicketSet;
       } finally {
         setIsLoadingDefaults(false);
       }
@@ -124,16 +136,72 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     if (currentGame?.settings && !isLoadingDefaults && settingsLoadedFrom === 'game') {
       setSettings(prev => ({
         ...prev,
-        // Update non-personal settings but preserve personal preferences
         maxTickets: currentGame.settings.maxTickets,
         selectedTicketSet: currentGame.settings.selectedTicketSet,
         callDelay: currentGame.settings.callDelay,
         prizes: currentGame.settings.prizes,
-        // Only update hostPhone if current one is empty/default
         hostPhone: prev.hostPhone && prev.hostPhone !== '+91' ? prev.hostPhone : currentGame.settings.hostPhone
       }));
     }
   }, [currentGame, isLoadingDefaults, settingsLoadedFrom]);
+
+  // NEW: Auto-regenerate tickets when maxTickets or selectedTicketSet changes
+  useEffect(() => {
+    // Only regenerate if we're in setup phase and not loading defaults
+    if (isLoadingDefaults || currentGame?.gameState?.phase !== 1 || isRegeneratingTickets || isProcessing) {
+      return;
+    }
+    
+    // Check if ticket-related settings have changed
+    const maxTicketsChanged = settings.maxTickets !== previousMaxTickets.current;
+    const ticketSetChanged = settings.selectedTicketSet !== previousTicketSet.current;
+    
+    if (maxTicketsChanged || ticketSetChanged) {
+      console.log('🎫 Ticket settings changed, regenerating tickets:', {
+        maxTicketsChanged: maxTicketsChanged ? `${previousMaxTickets.current} → ${settings.maxTickets}` : 'no change',
+        ticketSetChanged: ticketSetChanged ? `${previousTicketSet.current} → ${settings.selectedTicketSet}` : 'no change',
+        willRegenerate: true
+      });
+      
+      // Update refs to prevent duplicate regeneration
+      previousMaxTickets.current = settings.maxTickets;
+      previousTicketSet.current = settings.selectedTicketSet;
+      
+      // Trigger ticket regeneration
+      regenerateTicketsForSettings();
+    }
+  }, [settings.maxTickets, settings.selectedTicketSet, currentGame?.gameState?.phase, isLoadingDefaults, isRegeneratingTickets, isProcessing]);
+
+  // NEW: Function to regenerate tickets when settings change
+  const regenerateTicketsForSettings = async () => {
+    if (!currentUser?.uid || currentGame?.gameState?.phase !== 1) {
+      return;
+    }
+    
+    try {
+      setIsRegeneratingTickets(true);
+      hasRegeneratedTickets.current = true;
+      
+      console.log(`🎫 Regenerating tickets: ${settings.maxTickets} tickets from set ${settings.selectedTicketSet}`);
+      
+      // Send regenerate tickets command
+      const commandId = regenerateTickets(settings.selectedTicketSet, settings.maxTickets);
+      console.log(`📤 Regenerate tickets command sent: ${commandId}`);
+      
+      // Show feedback to user
+      setToastMessage(`Updating to ${settings.maxTickets} tickets from set ${settings.selectedTicketSet}...`);
+      setToastType('info');
+      setShowToast(true);
+      
+    } catch (error) {
+      console.error('❌ Error regenerating tickets:', error);
+      setToastMessage('Failed to update ticket structure. Please try again.');
+      setToastType('error');
+      setShowToast(true);
+    } finally {
+      setIsRegeneratingTickets(false);
+    }
+  };
 
   const handleSettingsUpdate = (updates: Partial<Game.Settings>) => {
     setSettings(prev => ({
@@ -287,7 +355,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
       const commandId = startBookingPhase(settings, tickets);
       console.log(`📤 Start booking phase command sent: ${commandId}`);
       
-      setToastMessage('Moving to booking phase with preserved settings');
+      setToastMessage('Moving to booking phase with current settings');
       setToastType('success');
       setShowToast(true);
       
@@ -301,7 +369,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     }
   };
 
-  // Show loading state while loading defaults
+  // Show loading state while loading defaults or regenerating tickets
   if (isLoadingDefaults) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -316,7 +384,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
     );
   }
 
-  // 🔥 NEW: Function to get settings source description
+  // Function to get settings source description
   const getSettingsSourceInfo = () => {
     switch (settingsLoadedFrom) {
       case 'database':
@@ -350,13 +418,21 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
             <h2 className="text-2xl font-semibold text-gray-900">Game Setup</h2>
             <p className="text-gray-600 mt-1">Configure game settings before starting</p>
             
-            {/* 🔥 NEW: Settings source indicator */}
+            {/* Settings source indicator */}
             <div className="flex items-center mt-2 text-sm">
               {sourceInfo.icon}
               <span className={`ml-2 ${sourceInfo.color}`}>
                 {sourceInfo.text}
               </span>
             </div>
+            
+            {/* NEW: Ticket regeneration indicator */}
+            {isRegeneratingTickets && (
+              <div className="flex items-center mt-2 text-sm text-blue-600">
+                <Loader className="w-4 h-4 animate-spin mr-2" />
+                <span>Updating ticket structure...</span>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center space-x-3">
@@ -365,17 +441,17 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                 Unsaved changes
               </span>
             )}
-            {isProcessing && (
+            {(isProcessing || isRegeneratingTickets) && (
               <span className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded flex items-center">
                 <div className="animate-spin h-3 w-3 border border-blue-600 border-t-transparent rounded-full mr-1" />
-                Processing...
+                {isRegeneratingTickets ? 'Updating tickets...' : 'Processing...'}
               </span>
             )}
             <button
               onClick={saveSettings}
-              disabled={isSubmitting || !hasMadeChanges || isProcessing}
+              disabled={isSubmitting || !hasMadeChanges || isProcessing || isRegeneratingTickets}
               className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center
-                ${isSubmitting || !hasMadeChanges || isProcessing
+                ${isSubmitting || !hasMadeChanges || isProcessing || isRegeneratingTickets
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                 }`}
@@ -408,6 +484,31 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
           </div>
         )}
         
+        {/* NEW: Show info about automatic ticket updates */}
+        {hasRegeneratedTickets.current && (
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <CheckCircle className="h-5 w-5 text-blue-400" />
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-blue-800">
+                  Ticket Structure Updated
+                </h3>
+                <div className="mt-2 text-sm text-blue-700">
+                  <p>
+                    The ticket structure has been automatically updated to match your settings: 
+                    {settings.maxTickets} tickets from set {settings.selectedTicketSet}.
+                  </p>
+                  <p className="mt-1">
+                    These changes will be reflected when you proceed to the booking phase.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <div className="space-y-6">
           <TicketSetSelector
             selectedSet={settings.selectedTicketSet}
@@ -424,7 +525,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
                 className="block text-sm font-medium text-gray-700"
               >
                 Host Phone Number
-                {/* 🔥 ENHANCED: Better indicator for auto-populated values */}
                 {settings.hostPhone && settings.hostPhone !== '+91' && settingsLoadedFrom === 'database' && (
                   <span className="text-green-600 text-xs ml-2">(preserved from previous game)</span>
                 )}
@@ -472,17 +572,17 @@ const GameSetup: React.FC<GameSetupProps> = ({ currentGame }) => {
         <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200 flex flex-col sm:flex-row sm:justify-end">
           <button
             onClick={handleStartBookingPhase}
-            disabled={isSubmitting || validationErrors.length > 0 || isProcessing}
+            disabled={isSubmitting || validationErrors.length > 0 || isProcessing || isRegeneratingTickets}
             className={`w-full sm:w-auto px-4 sm:px-6 py-4 sm:py-3 rounded-lg text-white font-medium flex items-center justify-center
-              ${isSubmitting || validationErrors.length > 0 || isProcessing
+              ${isSubmitting || validationErrors.length > 0 || isProcessing || isRegeneratingTickets
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700'
               }`}
           >
-            {isSubmitting || isProcessing ? (
+            {isSubmitting || isProcessing || isRegeneratingTickets ? (
               <span className="flex items-center">
                 <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                {isSubmitting ? 'Setting up...' : 'Processing...'}
+                {isSubmitting ? 'Setting up...' : isRegeneratingTickets ? 'Updating tickets...' : 'Processing...'}
               </span>
             ) : (
               <>
