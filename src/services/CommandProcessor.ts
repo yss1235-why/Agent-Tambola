@@ -1,4 +1,4 @@
-// src/services/CommandProcessor.ts - UPDATED with Regenerate Tickets Command
+// src/services/CommandProcessor.ts - COMPLETE FIXED VERSION
 import { GameCommand, CommandResult, CommandContext, CommandValidationResult } from '../types/commands';
 import { GameDatabaseService } from './GameDatabaseService';
 import { validateAllPrizes, ValidationContext } from '../utils/prizeValidation';
@@ -171,7 +171,7 @@ export class CommandProcessor {
   }
   
   /**
-   * NEW: Execute regenerate tickets command
+   * Execute regenerate tickets command
    */
   private async executeRegenerateTickets(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     if (abortSignal?.aborted) throw new Error('Regenerate tickets was aborted');
@@ -215,9 +215,9 @@ export class CommandProcessor {
       
       if (abortSignal?.aborted) throw new Error('Regenerate tickets was aborted before database update');
       
-      // Update both tickets and settings in one batch
+      // Update the ticket structure in the activeTickets section
       await this.databaseService.batchUpdateGameData(hostId, {
-        // Update the tickets structure completely
+        // Update the activeTickets structure
         tickets,
         // Clear any existing bookings since ticket structure changed
         bookings: {},
@@ -254,7 +254,7 @@ export class CommandProcessor {
   }
   
   /**
-   * Execute return to setup command - UPDATED to clear tickets completely
+   * FIXED: Execute return to setup command - completely clear ticket structure
    */
   private async executeReturnToSetup(command: any, context: CommandContext, abortSignal?: AbortSignal): Promise<CommandResult> {
     if (abortSignal?.aborted) throw new Error('Return to setup was aborted');
@@ -268,7 +268,7 @@ export class CommandProcessor {
     
     console.log(`🔄 Returning to setup phase (clearBookings: ${clearBookings})`);
     
-    // Prepare the batch update data - UPDATED to clear tickets completely
+    // FIXED: Prepare comprehensive reset for setup phase
     const batchUpdateData: any = {
       gameState: {
         phase: 1 as const,  // Setup phase
@@ -282,7 +282,7 @@ export class CommandProcessor {
         },
         allPrizesWon: false
       },
-      // Reset number system
+      // Reset number system completely
       numberSystem: {
         callDelay: currentGame.settings?.callDelay || 5,
         currentNumber: null,
@@ -291,11 +291,15 @@ export class CommandProcessor {
       }
     };
     
-    // UPDATED: Always clear tickets completely when returning to setup
-    // This allows for proper regeneration when settings change
-    batchUpdateData.tickets = {};
-    batchUpdateData.bookings = {};
-    batchUpdateData.players = {};
+    // FIXED: Always completely clear the ticket structure for proper regeneration
+    console.log('🎫 Completely clearing ticket structure to allow proper regeneration');
+    
+    // Clear everything ticket-related
+    batchUpdateData.tickets = {};  // Completely empty - forces regeneration
+    batchUpdateData.bookings = {}; // Clear all bookings
+    batchUpdateData.players = {};  // Clear all players
+    
+    // Reset booking metrics
     batchUpdateData.metrics = {
       startTime: Date.now(),
       lastBookingTime: Date.now(),
@@ -303,18 +307,22 @@ export class CommandProcessor {
       totalPlayers: 0
     };
     
+    if (abortSignal?.aborted) throw new Error('Return to setup was aborted before database update');
+    
     // Execute the batch update
     await this.databaseService.batchUpdateGameData(hostId, batchUpdateData);
     
-    const message = 'Successfully returned to setup phase. Ticket structure will be regenerated based on your settings.';
+    const message = 'Successfully returned to setup phase. Ticket configuration can now be changed and will regenerate properly.';
     
     console.log(`✅ ${message}`);
+    console.log('🎫 Next ticket changes in setup will trigger proper regeneration');
     
     return this.createSuccessResult(command, {
       phase: 1,
       status: 'setup',
       clearBookings: true,
       ticketsCleared: true,
+      forcesRegeneration: true,
       message
     });
   }
@@ -899,7 +907,6 @@ export class CommandProcessor {
     return { isValid: true };
   }
   
-  // NEW: Validate regenerate tickets command
   private validateRegenerateTickets(command: any, context: CommandContext): CommandValidationResult {
     const { selectedTicketSet, maxTickets } = command.payload;
     
