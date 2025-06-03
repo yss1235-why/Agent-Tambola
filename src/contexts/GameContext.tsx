@@ -1,4 +1,4 @@
-// src/contexts/GameContext.tsx - UPDATED with Return to Setup Command
+// src/contexts/GameContext.tsx - UPDATED with Regenerate Tickets Command
 import React, { createContext, useContext, useState, useMemo, ReactNode, useEffect, useCallback } from 'react';
 import { ref, onValue, off } from 'firebase/database';
 import { useCommandQueue } from '../hooks/useCommandQueue';
@@ -7,7 +7,7 @@ import { formatMultiplePrizes } from '../utils/prizeValidation';
 import type { CommandResult, CommandError } from '../types/commands';
 import type { Game } from '../types/game';
 
-// Updated context type with return to setup method
+// Updated context type with regenerate tickets method
 type GameContextType = {
   // Game state (read-only)
   currentGame: Game.CurrentGame | null;
@@ -32,7 +32,8 @@ type GameContextType = {
   updateCallDelay: (callDelay: number) => string;
   updateSoundSettings: (soundEnabled: boolean) => string;
   cancelBooking: (ticketIds: string[]) => string;
-  returnToSetup: (clearBookings?: boolean) => string; // NEW: Return to setup method
+  returnToSetup: (clearBookings?: boolean) => string;
+  regenerateTickets: (selectedTicketSet: number, maxTickets: number) => string; // NEW: Regenerate tickets method
   
   // Utilities
   hostId: string | null;
@@ -128,8 +129,11 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
           case 'COMPLETE_GAME':
             console.log(`🏁 Game completed successfully`);
             break;
-          case 'RETURN_TO_SETUP': // NEW: Handle return to setup success
+          case 'RETURN_TO_SETUP':
             console.log(`🔄 Successfully returned to setup phase`);
+            break;
+          case 'REGENERATE_TICKETS': // NEW: Handle regenerate tickets success
+            console.log(`🎫 Successfully regenerated ${result.data?.ticketsGenerated} tickets from set ${result.data?.selectedTicketSet}`);
             break;
         }
       } else {
@@ -183,7 +187,8 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
     updateCallDelay: commandQueue.updateCallDelay,
     updateSoundSettings: commandQueue.updateSoundSettings,
     cancelBooking: commandQueue.cancelBooking,
-    returnToSetup: commandQueue.returnToSetup, // NEW: Return to setup method
+    returnToSetup: commandQueue.returnToSetup,
+    regenerateTickets: commandQueue.regenerateTickets, // NEW: Regenerate tickets method
     
     // Utilities
     hostId,
@@ -198,7 +203,7 @@ export function GameProvider({ children, hostId }: GameProviderProps) {
     commandQueue.updateBooking, commandQueue.updateGameSettings, commandQueue.initializeGame,
     commandQueue.startBookingPhase, commandQueue.startPlayingPhase, commandQueue.completeGame,
     commandQueue.updateCallDelay, commandQueue.updateSoundSettings, commandQueue.cancelBooking,
-    commandQueue.returnToSetup, // NEW: Include in dependencies
+    commandQueue.returnToSetup, commandQueue.regenerateTickets, // NEW: Include in dependencies
     hostId, clearError, commandQueue.systemHealth
   ]);
   
