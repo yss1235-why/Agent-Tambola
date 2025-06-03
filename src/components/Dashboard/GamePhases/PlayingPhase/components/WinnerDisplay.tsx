@@ -1,9 +1,23 @@
-// src/components/Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay.tsx - Updated for multiple prizes
+// src/components/Dashboard/GamePhases/PlayingPhase/components/WinnerDisplay.tsx - FIXED: Proper prize name display
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { UserCircle, Phone, Clock, Trophy, Award, Download, Printer } from 'lucide-react';
 import type { Game } from '../../../../../types/game';
 import { exportToCSV } from '../../../../../services'; // Using simplified export function
 import { formatMultiplePrizes } from '../../../../../utils/prizeValidation'; // NEW: Import the formatter
+
+// ✅ FIXED: Added proper prize display name mapping
+const PRIZE_DISPLAY_NAMES: Record<keyof Game.Winners, string> = {
+  quickFive: 'Quick Five',
+  topLine: 'Top Line',
+  middleLine: 'Middle Line',
+  bottomLine: 'Bottom Line',
+  corners: 'Corners',
+  starCorners: 'Star Corners',
+  halfSheet: 'Half Sheet',
+  fullSheet: 'Full Sheet',
+  fullHouse: 'Full House',
+  secondFullHouse: 'Second Full House'
+};
 
 // Define default prizes configuration
 const DEFAULT_PRIZES: Game.Settings['prizes'] = {
@@ -51,7 +65,7 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
   const [prizeStatistics, setPrizeStatistics] = useState<Record<string, number>>({});
   const prevWinnersCountRef = useRef<number>(0);
 
-  // Process winners data - UPDATED for multiple prizes
+  // ✅ FIXED: Process winners data with proper prize display names
   useEffect(() => {
     const formattedWinners: WinnerInfo[] = [];
     const prizeStats: Record<string, number> = {};
@@ -77,7 +91,9 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
             const booking = bookings[ticketId];
             if (booking) {
               const playerKey = `${booking.playerName}-${booking.phoneNumber}`;
-              const prizeDisplayName = prizeType.replace(/([A-Z])/g, ' $1').trim();
+              
+              // ✅ FIXED: Use proper display name mapping instead of regex
+              const prizeDisplayName = PRIZE_DISPLAY_NAMES[prizeType as keyof Game.Winners] || prizeType;
               
               if (playerPrizes.has(playerKey)) {
                 // Add to existing player's prizes
@@ -369,7 +385,8 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({
             {Object.entries(prizes || {}).map(([prizeKey, isEnabled]) => {
               if (!isEnabled) return null;
               
-              const prizeType = prizeKey.replace(/([A-Z])/g, ' $1').trim();
+              // ✅ FIXED: Use proper display name mapping for the "all prizes" tab too
+              const prizeType = PRIZE_DISPLAY_NAMES[prizeKey as keyof Game.Winners] || prizeKey;
               const count = prizeStatistics[prizeKey] || 0;
               
               return (
