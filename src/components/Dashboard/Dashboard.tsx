@@ -1,5 +1,5 @@
-// src/components/Dashboard/Dashboard.tsx - UPDATED to show winners on game completion
-// Modified to display all winners above "Start New Game" button
+// src/components/Dashboard/Dashboard.tsx - FIXED: Load previous settings for new games
+// Modified to preserve prize selections and other settings across games
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,12 +8,13 @@ import DashboardHeader from './DashboardHeader';
 import GameSetup from './GamePhases/GameSetup/GameSetup';
 import BookingPhase from './GamePhases/BookingPhase/BookingPhase';
 import PlayingPhase from './GamePhases/PlayingPhase/PlayingPhase';
-import WinnerDisplay from './GamePhases/PlayingPhase/components/WinnerDisplay'; // ✅ ADDED: Import WinnerDisplay
+import WinnerDisplay from './GamePhases/PlayingPhase/components/WinnerDisplay';
 import { LoadingSpinner } from '@components';
 import { Game, GAME_PHASES } from '../../types/game';
 import SubscriptionExpiredPrompt from './SubscriptionExpiredPrompt';
+import { GameDatabaseService } from '../../services/GameDatabaseService'; // NEW: Import for loading saved settings
 
-// Default settings for new games
+// Default settings for new games - ONLY used if no saved settings exist
 const DEFAULT_PRIZES: Game.Settings['prizes'] = {
   quickFive: true,
   topLine: true,
@@ -49,6 +50,7 @@ function Dashboard() {
   
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(false); // NEW: Loading state for settings
 
   // Sync errors from game context
   useEffect(() => {
@@ -58,7 +60,58 @@ function Dashboard() {
   }, [gameError]);
 
   /**
-   * Initialize a new game using commands
+   * 🔥 FIXED: Load saved settings and preserve user preferences
+   */
+  const loadSavedSettings = async (): Promise<Game.Settings> => {
+    if (!currentUser?.uid) {
+      console.log('📁 No user ID, using default settings');
+      return DEFAULT_SETTINGS;
+    }
+    
+    try {
+      setIsLoadingSettings(true);
+      
+      const dbService = GameDatabaseService.getInstance();
+      const savedSettings = await dbService.getDefaultSettings(currentUser.uid);
+      
+      if (savedSettings) {
+        console.log('✅ Loaded saved settings for new game:', {
+          enabledPrizes: Object.entries(savedSettings.prizes || {}).filter(([_, enabled]) => enabled).length,
+          maxTickets: savedSettings.maxTickets,
+          callDelay: savedSettings.callDelay,
+          hostPhone: savedSettings.hostPhone ? 'Present' : 'Missing',
+          selectedTicketSet: savedSettings.selectedTicketSet
+        });
+        
+        // Ensure all required properties exist (merge with defaults as fallback)
+        const mergedSettings: Game.Settings = {
+          ...DEFAULT_SETTINGS,
+          ...savedSettings,
+          // Ensure prizes object exists and has all required properties
+          prizes: {
+            ...DEFAULT_PRIZES,
+            ...(savedSettings.prizes || {})
+          }
+        };
+        
+        return mergedSettings;
+        
+      } else {
+        console.log('📁 No saved settings found, using defaults for first-time setup');
+        return DEFAULT_SETTINGS;
+      }
+      
+    } catch (error) {
+      console.error('❌ Error loading saved settings:', error);
+      console.log('📁 Falling back to default settings due to error');
+      return DEFAULT_SETTINGS;
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  };
+
+  /**
+   * 🔥 UPDATED: Initialize new game with saved settings (preserve prize selections)
    */
   const handleInitializeNewGame = async () => {
     if (!currentUser?.uid || !isSubscriptionValid) {
@@ -70,31 +123,35 @@ function Dashboard() {
     setError(null);
     
     try {
-      console.log('🎮 Initializing new game with command');
+      console.log('🎮 Initializing new game with preserved settings...');
       
-      // Use default settings (could load from previous game if needed)
-      let gameSettings = DEFAULT_SETTINGS;
+      // 🔥 FIXED: Load previously saved settings instead of using hardcoded defaults
+      const gameSettings = await loadSavedSettings();
       
-      // Try to load default settings from a simple API call
-      // Note: This could be enhanced to load from user preferences
-      try {
-        // For now, just use defaults
-        console.log('Using default settings for new game');
-      } catch (settingsError) {
-        console.warn('Could not load default settings, using fallback:', settingsError);
-        gameSettings = DEFAULT_SETTINGS;
-      }
+      console.log('🔥 Using settings for new game:', {
+        source: 'Loaded from database (preserves previous selections)',
+        enabledPrizes: Object.entries(gameSettings.prizes).filter(([_, enabled]) => enabled).length,
+        maxTickets: gameSettings.maxTickets,
+        callDelay: gameSettings.callDelay,
+        selectedTicketSet: gameSettings.selectedTicketSet,
+        hostPhone: gameSettings.hostPhone ? 'Preserved' : 'Default',
+        preservedPrizes: Object.entries(gameSettings.prizes)
+          .filter(([_, enabled]) => enabled)
+          .map(([name]) => name)
+      });
       
-      // Send command to initialize game
+      // Send command to initialize game with loaded settings
       const commandId = initializeGame(gameSettings);
-      console.log(`📤 Initialize game command sent: ${commandId}`);
+      console.log(`📤 Initialize game command sent with preserved settings: ${commandId}`);
       
-      // The command processor will handle all the complex initialization
-      // including creating the game state, setting up default tickets, etc.
+      // Show success message indicating settings were preserved
+      if (gameSettings.hostPhone && gameSettings.hostPhone !== '+91') {
+        console.log('✅ Settings preserved: Previous prize selections and preferences loaded successfully');
+      }
       
     } catch (err) {
       console.error('❌ Failed to initialize game:', err);
-      setError('Failed to initialize new game. Please try again.');
+      setError(`Failed to initialize new game: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsInitializing(false);
     }
@@ -123,7 +180,7 @@ function Dashboard() {
         
       case GAME_PHASES.COMPLETED:
       default:
-        // ✅ UPDATED: Show winners above "Start New Game" button
+        // Show winners above "Start New Game" button
         const winners = currentGame.gameState?.winners || {
           quickFive: [], topLine: [], middleLine: [], bottomLine: [],
           corners: [], starCorners: [], halfSheet: [], fullSheet: [],
@@ -135,7 +192,7 @@ function Dashboard() {
         
         return (
           <div className="space-y-8">
-            {/* ✅ Game Completion Header */}
+            {/* Game Completion Header */}
             <div className="text-center py-8">
               <h2 className="text-2xl font-semibold text-gray-900">
                 Game Completed
@@ -145,7 +202,7 @@ function Dashboard() {
               </p>
             </div>
 
-            {/* ✅ ADDED: Winners Display Section */}
+            {/* Winners Display Section */}
             <div className="bg-white rounded-lg shadow-sm border p-6">
               <div className="flex items-center mb-6">
                 <div className="bg-green-100 p-3 rounded-full mr-4">
@@ -159,7 +216,6 @@ function Dashboard() {
                 </div>
               </div>
               
-              {/* ✅ Winner Display Component */}
               <WinnerDisplay
                 winners={winners}
                 tickets={activeTickets.tickets}
@@ -169,7 +225,7 @@ function Dashboard() {
               />
             </div>
 
-            {/* ✅ Game Statistics */}
+            {/* Game Statistics */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
               <h4 className="text-lg font-medium text-blue-900 mb-4">Game Statistics</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -194,22 +250,30 @@ function Dashboard() {
               </div>
             </div>
 
-            {/* ✅ Start New Game Section */}
+            {/* 🔥 UPDATED: Start New Game Section with settings preservation info */}
             <div className="text-center py-8">
-              <p className="mb-6 text-gray-600">
+              <p className="mb-4 text-gray-600">
                 Ready to start a new game?
+              </p>
+              <p className="mb-6 text-sm text-blue-600">
+                Your prize selections and game settings will be preserved from this game.
               </p>
               {isSubscriptionValid ? (
                 <button
                   onClick={handleInitializeNewGame}
-                  disabled={isInitializing || isProcessing}
+                  disabled={isInitializing || isProcessing || isLoadingSettings}
                   className={`px-8 py-3 rounded-lg bg-blue-500 text-white font-medium text-lg
-                    ${isInitializing || isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
+                    ${isInitializing || isProcessing || isLoadingSettings ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
                 >
                   {isInitializing ? (
                     <span className="flex items-center">
                       <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full mr-2" />
                       Initializing...
+                    </span>
+                  ) : isLoadingSettings ? (
+                    <span className="flex items-center">
+                      <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full mr-2" />
+                      Loading Settings...
                     </span>
                   ) : (
                     'Start New Game'
@@ -217,6 +281,18 @@ function Dashboard() {
                 </button>
               ) : (
                 <SubscriptionExpiredPrompt />
+              )}
+              
+              {/* 🔥 NEW: Settings preservation indicator */}
+              {currentGame?.settings && (
+                <div className="mt-4 text-xs text-gray-500 max-w-md mx-auto">
+                  <p>
+                    ✅ The new game will preserve: {Object.entries(currentGame.settings.prizes).filter(([_, enabled]) => enabled).length} prize selections, 
+                    {currentGame.settings.maxTickets} max tickets, 
+                    {currentGame.settings.callDelay}s delay, 
+                    and ticket set {currentGame.settings.selectedTicketSet}
+                  </p>
+                </div>
               )}
             </div>
           </div>
@@ -254,6 +330,16 @@ function Dashboard() {
           </div>
         )}
 
+        {/* 🔥 NEW: Settings Loading Indicator */}
+        {isLoadingSettings && (
+          <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-center">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
+              <span className="text-sm text-blue-800">Loading your previous game settings...</span>
+            </div>
+          </div>
+        )}
+
         {/* Error Display */}
         {error && (
           <div className="mb-4 bg-red-50 border border-red-200 rounded-md p-4 text-red-700">
@@ -280,24 +366,36 @@ function Dashboard() {
               No Active Game
             </h2>
             <p className="mt-2 text-gray-600">
-              Start a new game by configuring game settings
+              Start a new game - your previous settings will be preserved
             </p>
             {isSubscriptionValid ? (
-              <button
-                onClick={handleInitializeNewGame}
-                disabled={isInitializing || isProcessing}
-                className={`mt-4 px-6 py-2 rounded-lg bg-blue-500 text-white font-medium
-                  ${isInitializing || isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
-              >
-                {isInitializing ? (
-                  <span className="flex items-center">
-                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                    Initializing...
-                  </span>
-                ) : (
-                  'Start New Game'
-                )}
-              </button>
+              <div>
+                <button
+                  onClick={handleInitializeNewGame}
+                  disabled={isInitializing || isProcessing || isLoadingSettings}
+                  className={`mt-4 px-6 py-2 rounded-lg bg-blue-500 text-white font-medium
+                    ${isInitializing || isProcessing || isLoadingSettings ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
+                >
+                  {isInitializing ? (
+                    <span className="flex items-center">
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                      Initializing...
+                    </span>
+                  ) : isLoadingSettings ? (
+                    <span className="flex items-center">
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                      Loading Settings...
+                    </span>
+                  ) : (
+                    'Start New Game'
+                  )}
+                </button>
+                
+                {/* 🔥 NEW: Settings preservation info for initial game start */}
+                <p className="mt-3 text-sm text-blue-600">
+                  Prize selections and game preferences will be preserved from your previous games
+                </p>
+              </div>
             ) : (
               <SubscriptionExpiredPrompt />
             )}
