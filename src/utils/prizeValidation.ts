@@ -1,5 +1,5 @@
-// src/utils/prizeValidation.ts - FINAL FIXED VERSION
-// Production-ready code with proper prize winning logic and fixed mapping
+// src/utils/prizeValidation.ts - FIXED: Prize name to key mapping bug
+// This fixes the issue where prizes are detected but not saved
 
 import type { Game } from '../types/game';
 
@@ -20,10 +20,10 @@ export interface PrizeValidationResult {
   allPrizeTypes: string[];
 }
 
-// Proper type for prize keys that exist on both interfaces
+// FIXED: Proper type for prize keys that exist on both interfaces
 type PrizeKey = keyof Game.Winners & keyof Game.Settings['prizes'];
 
-// Type guard to ensure key exists on both interfaces
+// FIXED: Type guard to ensure key exists on both interfaces
 function isPrizeKey(key: string): key is PrizeKey {
   const validKeys: PrizeKey[] = [
     'quickFive', 'topLine', 'middleLine', 'bottomLine', 'corners',
@@ -32,7 +32,7 @@ function isPrizeKey(key: string): key is PrizeKey {
   return validKeys.includes(key as PrizeKey);
 }
 
-// 🔥 FIXED: Prize name to key mapping function - SOLVES THE MAIN BUG
+// 🔥 NEW: Prize name to key mapping function - FIXES THE MAIN BUG
 function prizeNameToKey(prizeName: string): PrizeKey | null {
   const nameToKeyMap: Record<string, PrizeKey> = {
     'Quick Five': 'quickFive',
@@ -50,7 +50,7 @@ function prizeNameToKey(prizeName: string): PrizeKey | null {
   return nameToKeyMap[prizeName] || null;
 }
 
-// Key to display name mapping function
+// 🔥 NEW: Key to display name mapping function
 function keyToPrizeName(key: PrizeKey): string {
   const keyToNameMap: Record<PrizeKey, string> = {
     'quickFive': 'Quick Five',
@@ -68,12 +68,12 @@ function keyToPrizeName(key: PrizeKey): string {
   return keyToNameMap[key] || key;
 }
 
-// Safe array access with proper type guards
+// FIXED: Safe array access with proper type guards
 function safeArrayAccess<T>(arr: T[] | undefined | null): T[] {
   return Array.isArray(arr) ? arr : [];
 }
 
-// Safe winners access with proper typing
+// FIXED: Safe winners access with proper typing
 function safeWinnersAccess(winners: Game.Winners | undefined | null): Game.Winners {
   if (!winners || typeof winners !== 'object') {
     return {
@@ -90,6 +90,7 @@ function safeWinnersAccess(winners: Game.Winners | undefined | null): Game.Winne
     };
   }
   
+  // FIXED: Ensure all arrays exist and are properly typed
   const safeWinners: Game.Winners = {} as Game.Winners;
   const prizeKeys: PrizeKey[] = [
     'quickFive', 'topLine', 'middleLine', 'bottomLine', 'corners',
@@ -103,7 +104,7 @@ function safeWinnersAccess(winners: Game.Winners | undefined | null): Game.Winne
   return safeWinners;
 }
 
-// Safe prize settings access with proper default
+// FIXED: Safe prize settings access with proper default
 function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | null): Game.Settings['prizes'] {
   const defaultPrizes: Game.Settings['prizes'] = {
     quickFive: false,
@@ -122,6 +123,7 @@ function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | n
     return defaultPrizes;
   }
   
+  // FIXED: Ensure all boolean properties exist
   const safePrizes: Game.Settings['prizes'] = {} as Game.Settings['prizes'];
   const prizeKeys: PrizeKey[] = [
     'quickFive', 'topLine', 'middleLine', 'bottomLine', 'corners',
@@ -135,27 +137,29 @@ function safePrizeSettingsAccess(prizes: Game.Settings['prizes'] | undefined | n
   return safePrizes;
 }
 
-// Safe ticket numbers access with proper typing
+// FIXED: Safe ticket numbers access with proper typing
 function safeTicketNumbers(ticket: Game.Ticket | undefined | null): number[][] {
   if (!ticket || !ticket.numbers || !Array.isArray(ticket.numbers)) {
     console.warn('Invalid ticket structure, using empty grid');
     return [[], [], []];
   }
   
+  // Ensure we have exactly 3 rows
   const numbers = [...ticket.numbers];
   while (numbers.length < 3) {
     numbers.push([]);
   }
   
+  // Ensure each row is an array
   return numbers.slice(0, 3).map(row => Array.isArray(row) ? row : []);
 }
 
-// Type-safe helper function to check if a prize is enabled
+// FIXED: Type-safe helper function to check if a prize is enabled
 function isPrizeEnabled(activePrizes: Game.Settings['prizes'], prizeKey: PrizeKey): boolean {
   return Boolean(activePrizes[prizeKey]);
 }
 
-// Performance-optimized lookup maps
+// FIXED: Performance-optimized lookup maps with proper typing
 class ValidationLookupMaps {
   private numberToTickets: Map<number, string[]> = new Map();
   private ticketToSheet: Map<string, number> = new Map();
@@ -180,6 +184,7 @@ class ValidationLookupMaps {
       }
       this.sheetToTickets.get(sheetNumber)!.push(ticketId);
       
+      // FIXED: Safe access to ticket numbers
       const ticketNumbers = safeTicketNumbers(ticket);
       ticketNumbers.flat().forEach(number => {
         if (number && number !== 0) {
@@ -221,7 +226,7 @@ class ValidationLookupMaps {
   }
 }
 
-// Timing-based validation rules
+// FIXED: Timing-based validation rules with proper typing
 function shouldCheckPrize(prizeKey: PrizeKey, callCount: number, currentWinners: Game.Winners): boolean {
   const safeWinners = safeWinnersAccess(currentWinners);
   
@@ -249,7 +254,7 @@ function shouldCheckPrize(prizeKey: PrizeKey, callCount: number, currentWinners:
   }
 }
 
-// Individual prize validation functions
+// FIXED: Individual prize validation functions with proper type safety
 export function validateQuickFive(ticket: Game.Ticket, calledNumbers: number[]): boolean {
   const safeCalledNumbers = safeArrayAccess(calledNumbers);
   const ticketNumbers = safeTicketNumbers(ticket).flat().filter(n => n !== 0);
@@ -324,7 +329,7 @@ export function validateFullHouse(ticket: Game.Ticket, calledNumbers: number[]):
   return allNumbers.length > 0 && allNumbers.every(n => safeCalledNumbers.includes(n));
 }
 
-// Sheet validation functions
+// FIXED: Sheet validation functions with proper type safety
 function validateHalfSheet(
   playerTickets: string[], 
   lookupMaps: ValidationLookupMaps, 
@@ -429,9 +434,10 @@ function validateFullSheet(
   return [];
 }
 
-// 🔥 MAIN FIXED FUNCTION: Complete TypeScript compliance with FIXED prize name mapping
+// 🔥 MAIN FIX: Complete TypeScript compliance with FIXED prize name mapping
 export function validateAllPrizes(context: ValidationContext): PrizeValidationResult[] {
   try {
+    // FIXED: Safe access to all context properties with proper defaults
     const tickets = context.tickets ?? {};
     const bookings = context.bookings ?? {};
     const calledNumbers = safeArrayAccess(context.calledNumbers);
@@ -447,13 +453,17 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
     
     const results: PrizeValidationResult[] = [];
     
+    // Get the most recently called number for optimization
     const lastCalledNumber = calledNumbers[calledNumbers.length - 1];
     if (!lastCalledNumber) {
       console.log('❌ No numbers called yet, skipping validation');
       return results;
     }
     
+    // Build lookup maps
     const lookupMaps = new ValidationLookupMaps(tickets, bookings);
+    
+    // Only check tickets that contain the last called number
     const affectedTickets = lookupMaps.getTicketsWithNumber(lastCalledNumber);
     
     if (affectedTickets.length === 0) {
@@ -479,7 +489,7 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
     
     console.log(`👥 Checking ${playerGroups.size} players for prizes`);
     
-    // Validate prizes for each affected player
+    // FIXED: Validate prizes for each affected player with proper typing
     for (const [playerKey, { tickets: playerAffectedTickets, booking }] of playerGroups) {
       const allPlayerTickets = lookupMaps.getPlayerTickets(booking.playerName, booking.phoneNumber);
       const wonPrizes: string[] = [];
@@ -494,7 +504,7 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
         const ticket = tickets[ticketId];
         if (!ticket) continue;
         
-        // Prize checks with proper display names
+        // 🔥 FIXED: Type-safe prize checking with proper display names
         const prizeChecks: Array<{ key: PrizeKey; validator: (ticket: Game.Ticket, numbers: number[]) => boolean; name: string }> = [
           { key: 'quickFive', validator: validateQuickFive, name: 'Quick Five' },
           { key: 'topLine', validator: validateTopLine, name: 'Top Line' },
@@ -565,22 +575,22 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
         }
       }
       
-      // 🔥 CRITICAL FIX: Create results with proper key mapping
+      // 🔥 CRITICAL FIX: If player won any prizes, add to results with proper key mapping
       if (wonPrizes.length > 0) {
+        // 🔥 FIXED: Use the new prizeNameToKey function instead of broken string manipulation
         const firstPrizeName = wonPrizes[0];
         const prizeKey = prizeNameToKey(firstPrizeName);
         
         if (prizeKey) {
-          const result: PrizeValidationResult = {
+          results.push({
             isWinner: true,
             winningTickets: [mainTicketId],
-            prizeType: prizeKey,
+            prizeType: prizeKey, // 🔥 Now correctly mapped!
             playerName: booking.playerName,
             phoneNumber: booking.phoneNumber,
             allPrizeTypes: wonPrizes
-          };
+          });
           
-          results.push(result);
           console.log(`✅ Prize validation complete for ${booking.playerName}: ${wonPrizes.join(', ')}`);
         } else {
           console.error(`❌ Failed to map prize name "${firstPrizeName}" to valid key`);
@@ -593,11 +603,12 @@ export function validateAllPrizes(context: ValidationContext): PrizeValidationRe
     
   } catch (error) {
     console.error('❌ Prize validation error:', error);
+    // Return empty array instead of throwing to prevent breaking the game
     return [];
   }
 }
 
-// Helper function to format multiple prizes
+// FIXED: Helper function to format multiple prizes with proper typing
 export function formatMultiplePrizes(prizeTypes: string[]): string {
   if (prizeTypes.length === 0) return '';
   if (prizeTypes.length === 1) return prizeTypes[0];
