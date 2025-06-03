@@ -1,4 +1,4 @@
-// src/hooks/useCommandQueue.ts - UPDATED with Return to Setup Command
+// src/hooks/useCommandQueue.ts - UPDATED with Regenerate Tickets Command
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { CommandQueue } from '../services/CommandQueue';
 import { GameCommand, CommandResult, CommandPriority, CommandError, CommandStats, CreateCommand } from '../types/commands';
@@ -22,7 +22,8 @@ interface UseCommandQueueReturn {
   updateCallDelay: (callDelay: number) => string;
   updateSoundSettings: (soundEnabled: boolean) => string;
   cancelBooking: (ticketIds: string[]) => string;
-  returnToSetup: (clearBookings?: boolean) => string; // NEW: Return to setup command
+  returnToSetup: (clearBookings?: boolean) => string;
+  regenerateTickets: (selectedTicketSet: number, maxTickets: number) => string; // NEW: Regenerate tickets command
   
   // Immediate state tracking
   isProcessing: boolean;
@@ -318,12 +319,20 @@ export function useCommandQueue({
     }, CommandPriority.HIGH);
   }, [sendCommand]);
   
-  // NEW: Return to setup command
   const returnToSetup = useCallback((clearBookings: boolean = true): string => {
     console.log(`🔄 Returning to setup phase (clearBookings: ${clearBookings})`);
     return sendCommand({
       type: 'RETURN_TO_SETUP',
       payload: { clearBookings }
+    }, CommandPriority.HIGH);
+  }, [sendCommand]);
+  
+  // NEW: Regenerate tickets command
+  const regenerateTickets = useCallback((selectedTicketSet: number, maxTickets: number): string => {
+    console.log(`🎫 Regenerating ${maxTickets} tickets from set ${selectedTicketSet}`);
+    return sendCommand({
+      type: 'REGENERATE_TICKETS',
+      payload: { selectedTicketSet, maxTickets }
     }, CommandPriority.HIGH);
   }, [sendCommand]);
   
@@ -345,7 +354,8 @@ export function useCommandQueue({
     updateCallDelay,
     updateSoundSettings,
     cancelBooking,
-    returnToSetup, // NEW: Return to setup command
+    returnToSetup,
+    regenerateTickets, // NEW: Regenerate tickets command
     
     // Real-time state
     isProcessing,
