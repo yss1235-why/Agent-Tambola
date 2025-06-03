@@ -1,4 +1,4 @@
-// src/types/commands.ts - UPDATED with Return to Setup Command
+// src/types/commands.ts - UPDATED with Regenerate Tickets Command
 // Command type definitions for the Command Queue Pattern
 
 import type { Game } from './game';
@@ -110,11 +110,19 @@ export interface CancelBookingCommand extends BaseCommand {
   };
 }
 
-// NEW: Return to Setup Command
 export interface ReturnToSetupCommand extends BaseCommand {
   type: 'RETURN_TO_SETUP';
   payload: {
-    clearBookings?: boolean; // Optional: whether to clear existing bookings (default: true)
+    clearBookings?: boolean;
+  };
+}
+
+// NEW: Regenerate Tickets Command
+export interface RegenerateTicketsCommand extends BaseCommand {
+  type: 'REGENERATE_TICKETS';
+  payload: {
+    selectedTicketSet: number;
+    maxTickets: number;
   };
 }
 
@@ -133,7 +141,8 @@ export type GameCommand =
   | UpdateCallDelayCommand
   | UpdateSoundSettingsCommand
   | CancelBookingCommand
-  | ReturnToSetupCommand; // NEW: Added to union type
+  | ReturnToSetupCommand
+  | RegenerateTicketsCommand; // NEW: Added to union type
 
 // Command result interface
 export interface CommandResult {
@@ -227,7 +236,8 @@ export interface CommandFactory {
   updatePrizeWinners: (hostId: string, prizeType: keyof Game.Winners, ticketIds: string[], playerName: string, phoneNumber: string, allPrizeTypes: string[]) => UpdatePrizeWinnersCommand;
   updateGameSettings: (hostId: string, settings: Partial<Game.Settings>) => UpdateGameSettingsCommand;
   completeGame: (hostId: string, reason?: string) => CompleteGameCommand;
-  returnToSetup: (hostId: string, clearBookings?: boolean) => ReturnToSetupCommand; // NEW
+  returnToSetup: (hostId: string, clearBookings?: boolean) => ReturnToSetupCommand;
+  regenerateTickets: (hostId: string, selectedTicketSet: number, maxTickets: number) => RegenerateTicketsCommand; // NEW
 }
 
 // Command validation functions type
@@ -296,9 +306,13 @@ export function isCancelBookingCommand(command: GameCommand): command is CancelB
   return command.type === 'CANCEL_BOOKING';
 }
 
-// NEW: Type guard for return to setup command
 export function isReturnToSetupCommand(command: GameCommand): command is ReturnToSetupCommand {
   return command.type === 'RETURN_TO_SETUP';
+}
+
+// NEW: Type guard for regenerate tickets command
+export function isRegenerateTicketsCommand(command: GameCommand): command is RegenerateTicketsCommand {
+  return command.type === 'REGENERATE_TICKETS';
 }
 
 // Command factory implementation
@@ -351,13 +365,21 @@ export const createCommandFactory = (generateId: () => string): CommandFactory =
     payload: { reason }
   }),
 
-  // NEW: Return to setup factory method
   returnToSetup: (hostId: string, clearBookings?: boolean): ReturnToSetupCommand => ({
     id: generateId(),
     type: 'RETURN_TO_SETUP',
     timestamp: Date.now(),
     hostId,
     payload: { clearBookings: clearBookings ?? true }
+  }),
+
+  // NEW: Regenerate tickets factory method
+  regenerateTickets: (hostId: string, selectedTicketSet: number, maxTickets: number): RegenerateTicketsCommand => ({
+    id: generateId(),
+    type: 'REGENERATE_TICKETS',
+    timestamp: Date.now(),
+    hostId,
+    payload: { selectedTicketSet, maxTickets }
   })
 });
 
@@ -375,7 +397,8 @@ export function getCommandPriority(command: GameCommand): CommandPriority {
     case 'START_BOOKING_PHASE':
     case 'START_PLAYING_PHASE':
     case 'CANCEL_BOOKING':
-    case 'RETURN_TO_SETUP': // NEW: High priority for navigation
+    case 'RETURN_TO_SETUP':
+    case 'REGENERATE_TICKETS': // NEW: High priority for ticket regeneration
       return CommandPriority.HIGH;
     
     case 'UPDATE_BOOKING':
